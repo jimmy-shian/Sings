@@ -30,6 +30,18 @@ else:
 TEMP_DIR = os.path.join(BASE_DIR, "temp_recordings")
 os.makedirs(TEMP_DIR, exist_ok=True)
 
+def get_app_version():
+    try:
+        ver_path = os.path.join(DIRECTORY, "version.json")
+        if os.path.exists(ver_path):
+            with open(ver_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("version", "0.0.2")
+    except Exception:
+        pass
+    return "0.0.2"
+
+APP_VERSION = get_app_version()
+
 class SingStudioHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
@@ -37,9 +49,17 @@ class SingStudioHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         try:
             parsed = urllib.parse.urlparse(self.path)
+
+            # 版本查詢端點 (讀取自 version.json)
+            if parsed.path == '/api/version':
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps({"version": APP_VERSION}, ensure_ascii=False).encode('utf-8'))
+                return
             
-            # 靜音處理 favicon.ico
-            if parsed.path == '/favicon.ico':
+            # favicon.ico 處理 (若檔案不存在才回傳 204 靜音)
+            if parsed.path == '/favicon.ico' and not os.path.exists(os.path.join(DIRECTORY, 'favicon.ico')):
                 self.send_response(204)
                 self.end_headers()
                 return
