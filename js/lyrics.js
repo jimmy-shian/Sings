@@ -4,8 +4,9 @@
  * 特性：
  * 1. 嚴格引用 Utils 工具函數，杜絕重複代碼。
  * 2. 整合 LRCLIB 免費開放歌詞 API（無 API Key、社群同步時間軸）。
- * 3. 60 FPS 平滑視差捲動與目前歌詞高亮放大。
- * 4. 點擊歌詞直接跳轉播放進度。
+ * 3. 60 FPS 平滑視差捲動與目前歌詞高亮居中放大。
+ * 4. 支援歌詞時間軸整體平移校準 (Offset)，支援以當前播放點設定為起始錨點。
+ * 5. 點擊歌詞直接跳轉播放進度。
  */
 
 class LyricsEngine {
@@ -15,6 +16,7 @@ class LyricsEngine {
     this.containerEl = null;
     this.lineElements = [];
     this.rawLrcText = '';
+    this.offsetSec = 0; // 歌詞時間偏移量 (秒)
   }
 
   init(containerElement) {
@@ -45,6 +47,7 @@ class LyricsEngine {
     this.rawLrcText = lrcText;
     this.lyrics = [];
     this.currentIndex = -1;
+    this.offsetSec = 0;
 
     if (!lrcText || typeof lrcText !== 'string') {
       this.render();
@@ -90,10 +93,56 @@ class LyricsEngine {
     this.render();
   }
 
+  /**
+   * 取得計算偏移量後的有效時間
+   */
+  getEffectiveTime(item) {
+    return Math.max(0, item.time + this.offsetSec);
+  }
+
+  /**
+   * 調整整體歌詞位移 (Offset)
+   */
+  setOffset(offsetSec) {
+    this.offsetSec = Math.round(offsetSec * 10) / 10;
+    this.updateTimeDisplay();
+    return this.offsetSec;
+  }
+
+  addOffset(deltaSec) {
+    return this.setOffset(this.offsetSec + deltaSec);
+  }
+
+  /**
+   * 以目前播放指針時間，設定為目標歌詞行（或第一行）之起點
+   */
+  setAnchorAtCurrentTime(targetTime) {
+    if (this.lyrics.length === 0) return this.offsetSec;
+    const refItem = this.currentIndex >= 0 ? this.lyrics[this.currentIndex] : this.lyrics[0];
+    if (refItem) {
+      const newOffset = targetTime - refItem.time;
+      return this.setOffset(newOffset);
+    }
+    return this.offsetSec;
+  }
+
+  updateTimeDisplay() {
+    this.lineElements.forEach((el, idx) => {
+      const item = this.lyrics[idx];
+      if (item) {
+        const timeEl = el.querySelector('.lyric-time');
+        if (timeEl) {
+          timeEl.textContent = Utils.formatDuration(this.getEffectiveTime(item));
+        }
+      }
+    });
+  }
+
   clearLyrics(customHint = '尚未載入同步歌詞。可點擊上方「搜尋同步歌詞 (LRCLIB)」線上搜尋或手動匯入。') {
     this.lyrics = [];
     this.rawLrcText = '';
     this.currentIndex = -1;
+    this.offsetSec = 0;
     this.emptyCustomHint = customHint;
     this.render();
   }
@@ -129,14 +178,15 @@ class LyricsEngine {
       div.className = 'lyric-line';
       div.dataset.index = idx;
       div.dataset.time = item.time;
-      div.innerHTML = `<span class="lyric-time">${Utils.formatDuration(item.time)}</span><span class="lyric-text">${Utils.escapeHtml(item.text)}</span>`;
+      div.innerHTML = `<span class="lyric-time">${Utils.formatDuration(this.getEffectiveTime(item))}</span><span class="lyric-text">${Utils.escapeHtml(item.text)}</span>`;
 
       div.addEventListener('click', () => {
+        const seekTime = this.getEffectiveTime(item);
         if (window.audioEngine) {
           if (window.audioEngine.isPlayingMix) {
-            window.audioEngine.seekMixedPreview(item.time);
+            window.audioEngine.seekMixedPreview(seekTime);
           } else if (!window.audioEngine.isRecording) {
-            window.audioEngine.seekBackingOnly(item.time);
+            window.audioEngine.seekBackingOnly(seekTime);
           }
         }
       });
@@ -153,7 +203,8 @@ class LyricsEngine {
 
     let activeIdx = -1;
     for (let i = 0; i < this.lyrics.length; i++) {
-      if (currentTime >= this.lyrics[i].time) {
+      const effectiveTime = this.getEffectiveTime(this.lyrics[i]);
+      if (currentTime >= effectiveTime) {
         activeIdx = i;
       } else {
         break;
@@ -173,15 +224,8 @@ class LyricsEngine {
         activeEl.classList.add('active');
         activeEl.classList.remove('passed');
 
-        const containerHeight = this.containerEl.clientHeight;
-        const lineTop = activeEl.offsetTop;
-        const lineHeight = activeEl.clientHeight;
-        const targetScrollTop = lineTop - (containerHeight / 2) + (lineHeight / 2);
-
-        this.containerEl.scrollTo({
-          top: Math.max(0, targetScrollTop),
-          behavior: 'smooth'
-        });
+        // 使用平滑居中捲動
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
   }
@@ -202,7 +246,7 @@ class LyricsEngine {
   exportLrcBlob() {
     let content = this.rawLrcText;
     if (!content && this.lyrics.length > 0) {
-      content = this.lyrics.map(l => `[${Utils.formatTimeLrc(l.time)}] ${l.text}`).join('\n');
+      content = this.lyrics.map(l => `[${Utils.formatTimeLrc(this.getEffectiveTime(l))}] ${l.text}`).join('\n');
     }
     return new Blob([content], { type: 'text/plain;charset=utf-8' });
   }
