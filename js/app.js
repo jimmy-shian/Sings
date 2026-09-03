@@ -1,0 +1,920 @@
+/**
+ * SingStudio - 主應用調度器 (Application Coordinator)
+ * 遵循 OpenDesign 規範：模組化分離、零重複邏輯、純專業 DAW 音訊操作
+ */
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 1. 快取所有 DOM 元素
+  const el = {
+    // 頂部狀態
+    storageQuota: document.getElementById('storageQuotaBadge'),
+    audioStatus: document.getElementById('audioStatusBadge'),
+    currentTrackTitle: document.getElementById('currentTrackTitle'),
+    currentTrackMeta: document.getElementById('currentTrackMeta'),
+    sourceModeBadge: document.getElementById('sourceModeBadge'),
+    btnQuickRecord: document.getElementById('btnQuickRecord'),
+
+    // 左欄切換膠囊 (伴奏來源 vs 同步字幕)
+    btnTabSource: document.getElementById('btnTabSource'),
+    btnTabLyrics: document.getElementById('btnTabLyrics'),
+    viewSource: document.getElementById('viewSource'),
+    viewLyrics: document.getElementById('viewLyrics'),
+
+    // 伴奏子分頁
+    tabLocal: document.getElementById('tabLocal'),
+    tabYouTube: document.getElementById('tabYouTube'),
+    tabDemo: document.getElementById('tabDemo'),
+    paneLocal: document.getElementById('paneLocal'),
+    paneYouTube: document.getElementById('paneYouTube'),
+    paneDemo: document.getElementById('paneDemo'),
+
+    // 本地伴奏與獨立播放器
+    dropzone: document.getElementById('dropzone'),
+    fileInput: document.getElementById('fileBackingInput'),
+    btnBrowseLocal: document.getElementById('btnBrowseLocal'),
+    localTrackPlayerBox: document.getElementById('localTrackPlayerBox'),
+    lblLocalFileName: document.getElementById('lblLocalFileName'),
+    btnChangeLocalFile: document.getElementById('btnChangeLocalFile'),
+    btnPlayBackingOnly: document.getElementById('btnPlayBackingOnly'),
+    sliderBackingSeek: document.getElementById('sliderBackingSeek'),
+    lblBackingTime: document.getElementById('lblBackingTime'),
+
+    // YouTube 模組
+    ytSearchInput: document.getElementById('ytSearchInput'),
+    btnYtSearch: document.getElementById('btnYtSearch'),
+    ytResults: document.getElementById('ytResults'),
+    ytPlayerBox: document.getElementById('ytPlayerBox'),
+
+    // 示範伴奏
+    btnLoadDemo: document.getElementById('btnLoadDemo'),
+
+    // 動態歌詞
+    lyricsBox: document.getElementById('lyricsBox'),
+    btnImportLrc: document.getElementById('btnImportLrc'),
+    fileLrcInput: document.getElementById('fileLrcInput'),
+    btnExportLrc: document.getElementById('btnExportLrc'),
+    btnSearchLrc: document.getElementById('btnSearchLrc'),
+
+    // 主錄音時間軸畫布與控制項
+    mainTimelineCanvas: document.getElementById('mainTimelineCanvas'),
+    lblZoomLevel: document.getElementById('lblZoomLevel'),
+    btnZoomIn: document.getElementById('btnZoomIn'),
+    btnZoomOut: document.getElementById('btnZoomOut'),
+    btnZoomReset: document.getElementById('btnZoomReset'),
+
+    // 音訊電平儀表 (無評分)
+    lblRecordTime: document.getElementById('lblRecordTime'),
+    vuLevelBar: document.getElementById('vuLevelBar'),
+    lblInputDb: document.getElementById('lblInputDb'),
+    lblTrackStatus: document.getElementById('lblTrackStatus'),
+
+    // 錄音操作按鈕 (支援接續錄製)
+    btnRecordStart: document.getElementById('btnRecordStart'),
+    btnRecordPause: document.getElementById('btnRecordPause'),
+    btnRecordResume: document.getElementById('btnRecordResume'),
+    btnRecordFinish: document.getElementById('btnRecordFinish'),
+    btnRecordReset: document.getElementById('btnRecordReset'),
+
+    // 獨立後製混音專屬視窗 (完全分離)
+    reviewWindowModal: document.getElementById('reviewWindowModal'),
+    btnCloseReviewModal: document.getElementById('btnCloseReviewModal'),
+    reviewTimelineCanvas: document.getElementById('reviewTimelineCanvas'),
+    lblReviewZoom: document.getElementById('lblReviewZoom'),
+    btnReviewZoomIn: document.getElementById('btnReviewZoomIn'),
+    btnReviewZoomOut: document.getElementById('btnReviewZoomOut'),
+    btnTogglePlayPreview: document.getElementById('btnTogglePlayPreview'),
+    lblPlayPreview: document.getElementById('lblPlayPreview'),
+    iconPlayPreview: document.getElementById('iconPlayPreview'),
+    btnResetPreview: document.getElementById('btnResetPreview'),
+    sliderSyncSeek: document.getElementById('sliderSyncSeek'),
+    lblSyncTime: document.getElementById('lblSyncTime'),
+
+    // 混音滑桿與靜音
+    sliderBacking: document.getElementById('sliderBacking'),
+    sliderVocal: document.getElementById('sliderVocal'),
+    sliderLatency: document.getElementById('sliderLatency'),
+    valBacking: document.getElementById('valBacking'),
+    valVocal: document.getElementById('valVocal'),
+    valLatency: document.getElementById('valLatency'),
+    checkReverb: document.getElementById('checkReverb'),
+    btnMuteBacking: document.getElementById('btnMuteBacking'),
+    btnMuteVocal: document.getElementById('btnMuteVocal'),
+    btnSaveLocal: document.getElementById('btnSaveLocal'),
+    btnExportWav: document.getElementById('btnExportWav'),
+
+    // 作品庫表格
+    libraryBody: document.getElementById('libraryBody'),
+
+    // LRCLIB Modal
+    modalLrc: document.getElementById('modalLrc'),
+    btnCloseLrcModal: document.getElementById('btnCloseLrcModal'),
+    lrcSearchQuery: document.getElementById('lrcSearchQuery'),
+    btnDoLrcSearch: document.getElementById('btnDoLrcSearch'),
+    lrcResultsList: document.getElementById('lrcResultsList')
+  };
+
+  let recordLoopId = null;
+  let backingSoloLoopId = null;
+  let reviewSyncLoopId = null;
+
+  // 2. 實例化兩個獨立的時間軸 (主錄音時間軸 + 獨立後製混音時間軸)
+  const mainTimeline = new AudioTimeline({
+    canvas: el.mainTimelineCanvas,
+    duration: 60,
+    onSeek: (targetTime) => {
+      if (audioEngine.isRecording) return; // 正在錄音時不任意跳躍
+
+      if (audioEngine.isBackingSoloPlaying) {
+        audioEngine.seekBackingOnly(targetTime);
+      }
+      lyricsEngine.update(targetTime);
+      updateRecordTimeDisplay(targetTime);
+    },
+    onZoomChange: (zoom) => {
+      el.lblZoomLevel.textContent = `${zoom.toFixed(1)}x`;
+    }
+  });
+
+  const reviewTimeline = new AudioTimeline({
+    canvas: el.reviewTimelineCanvas,
+    duration: 60,
+    onSeek: (targetTime) => {
+      audioEngine.seekMixedPreview(targetTime);
+      const totalDur = audioEngine.getReviewDuration();
+      el.sliderSyncSeek.value = (targetTime / totalDur) * 1000;
+      el.lblSyncTime.textContent = `${Utils.formatDuration(targetTime)} / ${Utils.formatDuration(totalDur)}`;
+      lyricsEngine.update(targetTime);
+    },
+    onZoomChange: (zoom) => {
+      el.lblReviewZoom.textContent = `${zoom.toFixed(1)}x`;
+    }
+  });
+
+  // 初始化歌詞引擎
+  lyricsEngine.init(el.lyricsBox);
+
+  // 異步讀取儲存配額
+  safeStorage.getStorageQuota().then(quota => {
+    el.storageQuota.textContent = `儲存保護: ${quota.usageMB} MB / ${quota.quotaMB} MB`;
+  });
+  refreshLibraryTable();
+
+  // ==========================================================================
+  // 左欄切換膠囊：伴奏來源 vs 同步字幕 (LRC)
+  // ==========================================================================
+  function switchLeftTab(tab) {
+    if (tab === 'source') {
+      el.btnTabSource.classList.add('active');
+      el.btnTabLyrics.classList.remove('active');
+      el.viewSource.style.display = 'flex';
+      el.viewLyrics.style.display = 'none';
+    } else {
+      el.btnTabLyrics.classList.add('active');
+      el.btnTabSource.classList.remove('active');
+      el.viewLyrics.style.display = 'flex';
+      el.viewSource.style.display = 'none';
+    }
+  }
+
+  el.btnTabSource.addEventListener('click', () => switchLeftTab('source'));
+  el.btnTabLyrics.addEventListener('click', () => switchLeftTab('lyrics'));
+
+  // 快速錄製按鈕：自動切換到歌詞檢視並啟動錄音
+  el.btnQuickRecord.addEventListener('click', () => {
+    switchLeftTab('lyrics');
+    el.btnRecordStart.click();
+  });
+
+  // ==========================================================================
+  // 時間軸滾輪縮放與按鈕控制
+  // ==========================================================================
+  el.btnZoomIn.addEventListener('click', () => {
+    mainTimeline.setZoom(mainTimeline.zoomLevel * 1.3);
+  });
+  el.btnZoomOut.addEventListener('click', () => {
+    mainTimeline.setZoom(mainTimeline.zoomLevel / 1.3);
+  });
+  el.btnZoomReset.addEventListener('click', () => {
+    mainTimeline.resetZoom();
+  });
+
+  el.btnReviewZoomIn.addEventListener('click', () => {
+    reviewTimeline.setZoom(reviewTimeline.zoomLevel * 1.3);
+  });
+  el.btnReviewZoomOut.addEventListener('click', () => {
+    reviewTimeline.setZoom(reviewTimeline.zoomLevel / 1.3);
+  });
+
+  // ==========================================================================
+  // 伴奏模式次分頁切換 (本地 / YouTube / 示範)
+  // ==========================================================================
+  function switchBackingPane(mode) {
+    [el.tabLocal, el.tabYouTube, el.tabDemo].forEach(t => t.classList.remove('active'));
+    [el.paneLocal, el.paneYouTube, el.paneDemo].forEach(p => p.classList.remove('active'));
+
+    audioEngine.pauseBackingOnly();
+    updateBackingSoloBtn(false);
+
+    if (mode === 'local') {
+      el.tabLocal.classList.add('active');
+      el.paneLocal.classList.add('active');
+      audioEngine.sourceMode = 'local';
+      el.sourceModeBadge.textContent = '[本地音訊]';
+    } else if (mode === 'youtube') {
+      el.tabYouTube.classList.add('active');
+      el.paneYouTube.classList.add('active');
+      audioEngine.sourceMode = 'youtube';
+      el.sourceModeBadge.textContent = '[YouTube 直連]';
+    } else {
+      el.tabDemo.classList.add('active');
+      el.paneDemo.classList.add('active');
+      audioEngine.sourceMode = 'demo';
+      el.sourceModeBadge.textContent = '[內建示範]';
+    }
+  }
+
+  el.tabLocal.addEventListener('click', () => switchBackingPane('local'));
+  el.tabYouTube.addEventListener('click', () => switchBackingPane('youtube'));
+  el.tabDemo.addEventListener('click', () => switchBackingPane('demo'));
+
+  // ==========================================================================
+  // 本地伴奏載入與獨立播放器 (時間軸 60FPS 平滑連動)
+  // ==========================================================================
+  el.btnBrowseLocal.addEventListener('click', () => el.fileInput.click());
+  el.btnChangeLocalFile.addEventListener('click', () => el.fileInput.click());
+  el.dropzone.addEventListener('click', () => el.fileInput.click());
+
+  el.dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    el.dropzone.classList.add('dragover');
+  });
+  el.dropzone.addEventListener('dragleave', () => el.dropzone.classList.remove('dragover'));
+  el.dropzone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    el.dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleLocalFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  el.fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleLocalFile(e.target.files[0]);
+    }
+  });
+
+  async function handleLocalFile(file) {
+    if (!file) return;
+    try {
+      el.currentTrackTitle.textContent = `載入中: ${file.name}...`;
+      const dur = await audioEngine.loadBackingTrack(file);
+
+      el.currentTrackTitle.textContent = file.name;
+      el.currentTrackMeta.textContent = `[本機音訊] ${Utils.formatBytes(file.size)} · ${Utils.formatDuration(dur)}`;
+      el.ytPlayerBox.style.display = 'none';
+      el.audioStatus.textContent = '伴奏就緒';
+
+      // 啟用伴奏專屬播放控制
+      el.localTrackPlayerBox.style.display = 'block';
+      el.lblLocalFileName.textContent = file.name;
+      el.lblBackingTime.textContent = `00:00 / ${Utils.formatDuration(dur)}`;
+      el.sliderBackingSeek.value = 0;
+      updateBackingSoloBtn(false);
+
+      // 同步載入至主時間軸
+      mainTimeline.setDuration(dur);
+      mainTimeline.setBackingPeaks(audioEngine.waveformPeaks, dur);
+      mainTimeline.updatePlayhead(0, false);
+      updateRecordTimeDisplay(0);
+
+      // 清空舊示範歌詞，引導搜尋
+      lyricsEngine.clearLyrics(`已載入【${file.name}】。點擊上方「搜尋同步歌詞」或匯入 .lrc。`);
+    } catch (err) {
+      alert('檔案載入失敗: ' + err.message);
+      el.currentTrackTitle.textContent = '載入失敗';
+    }
+  }
+
+  function updateBackingSoloBtn(isPlaying) {
+    if (isPlaying) {
+      el.btnPlayBackingOnly.textContent = '❚❚ 暫停伴奏';
+      el.btnPlayBackingOnly.classList.remove('btn-primary');
+    } else {
+      el.btnPlayBackingOnly.textContent = '▶ 試聽伴奏';
+      el.btnPlayBackingOnly.classList.add('btn-primary');
+    }
+  }
+
+  // 伴奏單獨播放：時間軸指針與波形隨 60FPS 平滑推移
+  el.btnPlayBackingOnly.addEventListener('click', () => {
+    const isPlaying = audioEngine.toggleBackingOnly();
+    updateBackingSoloBtn(isPlaying);
+
+    if (isPlaying) {
+      function backingSoloLoop() {
+        if (!audioEngine.isBackingSoloPlaying) return;
+
+        const cur = audioEngine.getCurrentTime();
+        const dur = audioEngine.backingDuration || 60;
+
+        el.sliderBackingSeek.value = (cur / dur) * 1000;
+        el.lblBackingTime.textContent = `${Utils.formatDuration(cur)} / ${Utils.formatDuration(dur)}`;
+
+        // 同步驅動時間軸與歌詞
+        mainTimeline.updatePlayhead(cur, true);
+        lyricsEngine.update(cur);
+        updateRecordTimeDisplay(cur);
+
+        if (cur >= dur) {
+          audioEngine.pauseBackingOnly();
+          updateBackingSoloBtn(false);
+          return;
+        }
+
+        backingSoloLoopId = requestAnimationFrame(backingSoloLoop);
+      }
+      backingSoloLoop();
+    } else {
+      if (backingSoloLoopId) cancelAnimationFrame(backingSoloLoopId);
+    }
+  });
+
+  el.sliderBackingSeek.addEventListener('input', (e) => {
+    const ratio = parseFloat(e.target.value) / 1000;
+    const dur = audioEngine.backingDuration || 60;
+    const target = ratio * dur;
+    audioEngine.seekBackingOnly(target);
+    el.lblBackingTime.textContent = `${Utils.formatDuration(target)} / ${Utils.formatDuration(dur)}`;
+    mainTimeline.updatePlayhead(target, audioEngine.isBackingSoloPlaying);
+    lyricsEngine.update(target);
+    updateRecordTimeDisplay(target);
+  });
+
+  // ==========================================================================
+  // 示範伴奏合成
+  // ==========================================================================
+  el.btnLoadDemo.addEventListener('click', async () => {
+    try {
+      el.btnLoadDemo.textContent = '合成中...';
+      const dur = await audioEngine.generateDemoBackingTrack();
+      lyricsEngine.loadDemoLyrics();
+
+      el.currentTrackTitle.textContent = '卡農之歌 (內建高音質和弦示範)';
+      el.currentTrackMeta.textContent = '[內建音訊] 56秒 卡農和弦進行';
+      el.ytPlayerBox.style.display = 'none';
+      el.audioStatus.textContent = '示範就緒';
+      audioEngine.sourceMode = 'demo';
+      el.btnLoadDemo.textContent = '載入示範伴奏';
+
+      mainTimeline.setDuration(dur);
+      mainTimeline.setBackingPeaks(audioEngine.waveformPeaks, dur);
+      mainTimeline.updatePlayhead(0, false);
+      updateRecordTimeDisplay(0);
+    } catch (err) {
+      alert('合成失敗: ' + err.message);
+      el.btnLoadDemo.textContent = '載入示範伴奏';
+    }
+  });
+
+  // ==========================================================================
+  // YouTube 直連搜尋
+  // ==========================================================================
+  async function performYouTubeSearch() {
+    const query = el.ytSearchInput.value.trim();
+    if (!query) return;
+
+    const directId = youtubeManager.extractVideoId(query);
+    if (directId) {
+      selectYouTubeVideo(directId, `YouTube 影片 (${directId})`);
+      return;
+    }
+
+    el.ytResults.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">搜尋中...</div>';
+
+    try {
+      const results = await youtubeManager.search(query);
+      el.ytResults.innerHTML = '';
+
+      if (!results || results.length === 0) {
+        el.ytResults.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">未找到影片，請嘗試簡化關鍵字或直接貼上網址</div>';
+        return;
+      }
+
+      results.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'yt-result-item';
+        div.innerHTML = `
+          <div>
+            <div class="yt-item-title">${Utils.escapeHtml(item.title)}</div>
+            <div class="yt-item-sub">${Utils.escapeHtml(item.channel)} · ${item.duration}</div>
+          </div>
+          <button class="btn btn-sm btn-primary">選擇</button>
+        `;
+
+        div.querySelector('button').addEventListener('click', () => {
+          if (item.isSuggestion) {
+            el.ytSearchInput.value = item.title;
+            performYouTubeSearch();
+          } else {
+            selectYouTubeVideo(item.id, item.title);
+          }
+        });
+
+        el.ytResults.appendChild(div);
+      });
+    } catch (err) {
+      el.ytResults.innerHTML = `<div style="padding:16px;color:var(--danger);text-align:center;">${err.message}</div>`;
+    }
+  }
+
+  function selectYouTubeVideo(videoId, title) {
+    youtubeManager.loadVideo(videoId, title);
+    audioEngine.sourceMode = 'youtube';
+    el.ytPlayerBox.style.display = 'block';
+    el.currentTrackTitle.textContent = title;
+    el.currentTrackMeta.textContent = `[YouTube 直連] ID: ${videoId}`;
+    el.audioStatus.textContent = 'YouTube 就緒';
+
+    // 預設時長 180 秒，可隨播放獲取
+    mainTimeline.setDuration(180);
+    mainTimeline.setBackingPeaks(null, 180);
+    mainTimeline.updatePlayhead(0, false);
+    updateRecordTimeDisplay(0);
+
+    lyricsEngine.clearLyrics(`已選擇【${title}】。點擊上方「搜尋同步歌詞」或匯入 .lrc。`);
+  }
+
+  el.btnYtSearch.addEventListener('click', performYouTubeSearch);
+  el.ytSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') performYouTubeSearch();
+  });
+
+  // ==========================================================================
+  // 動態歌詞與 LRCLIB 整合
+  // ==========================================================================
+  el.btnImportLrc.addEventListener('click', () => el.fileLrcInput.click());
+  el.fileLrcInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      lyricsEngine.parseLRC(evt.target.result);
+    };
+    reader.readAsText(file);
+  });
+
+  el.btnExportLrc.addEventListener('click', () => {
+    const blob = lyricsEngine.exportLrcBlob();
+    Utils.downloadBlob(blob, `${el.currentTrackTitle.textContent.trim() || 'lyrics'}.lrc`);
+  });
+
+  el.btnSearchLrc.addEventListener('click', () => {
+    el.modalLrc.classList.add('open');
+    el.lrcSearchQuery.value = el.currentTrackTitle.textContent
+      .replace(/\[.*?\]/g, '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/【.*?】/g, '')
+      .replace(/\.[^/.]+$/, "")
+      .trim();
+  });
+
+  el.btnCloseLrcModal.addEventListener('click', () => el.modalLrc.classList.remove('open'));
+
+  el.btnDoLrcSearch.addEventListener('click', async () => {
+    const q = el.lrcSearchQuery.value.trim();
+    if (!q) return;
+
+    el.lrcResultsList.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">查詢 LRCLIB 開源庫...</div>';
+
+    try {
+      const list = await lyricsEngine.searchLRCLib(q);
+      el.lrcResultsList.innerHTML = '';
+
+      if (!list || list.length === 0) {
+        el.lrcResultsList.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">查無歌詞，請嘗試簡化關鍵字</div>';
+        return;
+      }
+
+      list.forEach(song => {
+        const item = document.createElement('div');
+        item.className = 'yt-result-item';
+        item.innerHTML = `
+          <div>
+            <div class="yt-item-title">${Utils.escapeHtml(song.trackName)}</div>
+            <div class="yt-item-sub">${Utils.escapeHtml(song.artistName)} · ${song.syncedLyrics ? '[同步時間軸]' : '[純文字]'}</div>
+          </div>
+          <button class="btn btn-sm btn-primary">套用</button>
+        `;
+
+        item.querySelector('button').addEventListener('click', () => {
+          lyricsEngine.parseLRC(song.syncedLyrics || song.plainLyrics || '');
+          el.modalLrc.classList.remove('open');
+        });
+
+        el.lrcResultsList.appendChild(item);
+      });
+    } catch (err) {
+      el.lrcResultsList.innerHTML = `<div style="padding:16px;color:var(--danger);text-align:center;">${err.message}</div>`;
+    }
+  });
+
+  // ==========================================================================
+  // 錄製流程：開始 / 暫停 / 接續錄製 (Punch-in) / 完成進入後製
+  // ==========================================================================
+
+  function updateRecordTimeDisplay(curSec) {
+    const totalSec = audioEngine.backingDuration || 60;
+    el.lblRecordTime.textContent = `${Utils.formatDuration(curSec)} / ${Utils.formatDuration(totalSec)}`;
+  }
+
+  function startLiveRecordLoop() {
+    function loop() {
+      if (!audioEngine.isRecording) return;
+
+      const curTime = audioEngine.getCurrentTime();
+      const audioData = audioEngine.getLiveAudioData();
+
+      // 1. 更新真實音訊電平表 (VU Meter) 與 dB
+      const levelPercent = Math.min(100, Math.max(0, (audioData.peakDb + 60) * 1.66));
+      el.vuLevelBar.style.width = `${levelPercent}%`;
+      el.lblInputDb.textContent = `${audioData.peakDb.toFixed(0)} dB`;
+
+      // 2. 更新時間顯示
+      updateRecordTimeDisplay(curTime);
+
+      // 3. 傳入即時人聲時域振幅至時間軸繪製
+      mainTimeline.addLiveVocalWave(curTime, audioData.rms);
+      mainTimeline.updatePlayhead(curTime, true);
+
+      // 4. 同步滾動字幕
+      lyricsEngine.update(curTime);
+
+      recordLoopId = requestAnimationFrame(loop);
+    }
+    recordLoopId = requestAnimationFrame(loop);
+  }
+
+  // 開始全新錄製
+  el.btnRecordStart.addEventListener('click', async () => {
+    try {
+      audioEngine.pauseBackingOnly();
+      updateBackingSoloBtn(false);
+
+      await audioEngine.startSinging(0);
+      mainTimeline.clearLiveVocalWave();
+      mainTimeline.setVocalTakes([]);
+
+      // 切換按鈕狀態
+      el.btnRecordStart.style.display = 'none';
+      el.btnRecordPause.style.display = 'inline-flex';
+      el.btnRecordResume.style.display = 'none';
+      el.btnRecordFinish.style.display = 'none';
+      el.btnRecordReset.style.display = 'none';
+      el.lblTrackStatus.textContent = '[錄音進行中 · REC]';
+      el.lblTrackStatus.style.color = 'var(--danger)';
+
+      startLiveRecordLoop();
+    } catch (err) {
+      alert(err.message || '麥克風啟動失敗');
+    }
+  });
+
+  // 暫停錄音 (寫入磁碟 temp_ 暫存，保留當前 Takes)
+  el.btnRecordPause.addEventListener('click', async () => {
+    if (recordLoopId) cancelAnimationFrame(recordLoopId);
+
+    const takes = await audioEngine.pauseSinging();
+    mainTimeline.clearLiveVocalWave();
+    mainTimeline.setVocalTakes(takes);
+
+    // 切換按鈕狀態 (顯示接續錄製與完成按鈕)
+    el.btnRecordPause.style.display = 'none';
+    el.btnRecordResume.style.display = 'inline-flex';
+    el.btnRecordFinish.style.display = 'inline-flex';
+    el.btnRecordReset.style.display = 'inline-flex';
+    el.lblTrackStatus.textContent = '[錄音已暫停 · PAUSED]';
+    el.lblTrackStatus.style.color = 'var(--warning)';
+
+    el.vuLevelBar.style.width = '0%';
+    el.lblInputDb.textContent = '-60 dB';
+  });
+
+  // 接續錄製 (Punch-in Recording)：從當前時間軸指針處接續錄製
+  el.btnRecordResume.addEventListener('click', async () => {
+    try {
+      const punchInTime = mainTimeline.currentTime;
+      await audioEngine.startSinging(punchInTime);
+
+      el.btnRecordResume.style.display = 'none';
+      el.btnRecordPause.style.display = 'inline-flex';
+      el.btnRecordFinish.style.display = 'none';
+      el.btnRecordReset.style.display = 'none';
+      el.lblTrackStatus.textContent = `[接續錄製中 · ${Utils.formatDuration(punchInTime)}]`;
+      el.lblTrackStatus.style.color = 'var(--danger)';
+
+      startLiveRecordLoop();
+    } catch (err) {
+      alert(err.message || '接續錄音失敗');
+    }
+  });
+
+  // 重新開始錄音
+  el.btnRecordReset.addEventListener('click', () => {
+    if (confirm('確定放棄目前的錄製片段並重新開始嗎？')) {
+      audioEngine.resetRecording();
+      mainTimeline.clearLiveVocalWave();
+      mainTimeline.setVocalTakes([]);
+      mainTimeline.updatePlayhead(0, false);
+      updateRecordTimeDisplay(0);
+
+      el.btnRecordStart.style.display = 'inline-flex';
+      el.btnRecordPause.style.display = 'none';
+      el.btnRecordResume.style.display = 'none';
+      el.btnRecordFinish.style.display = 'none';
+      el.btnRecordReset.style.display = 'none';
+      el.lblTrackStatus.textContent = '[待機中]';
+      el.lblTrackStatus.style.color = '';
+    }
+  });
+
+  // 完成演唱：開啟獨立後製混音視窗 (完全獨立視窗)
+  el.btnRecordFinish.addEventListener('click', async () => {
+    if (recordLoopId) cancelAnimationFrame(recordLoopId);
+
+    const result = await audioEngine.stopSinging();
+
+    el.btnRecordStart.style.display = 'inline-flex';
+    el.btnRecordPause.style.display = 'none';
+    el.btnRecordResume.style.display = 'none';
+    el.btnRecordFinish.style.display = 'none';
+    el.btnRecordReset.style.display = 'none';
+    el.lblTrackStatus.textContent = '[已完成 · READY]';
+    el.lblTrackStatus.style.color = 'var(--success)';
+
+    // 初始化並開啟獨立後製混音視窗
+    openReviewModal(result);
+  });
+
+  // ==========================================================================
+  // 獨立後製混音專屬視窗 (完全分離，具備專屬動態時間軸)
+  // ==========================================================================
+
+  function openReviewModal(result) {
+    const totalDur = audioEngine.getReviewDuration();
+
+    // 載入至後製專屬時間軸
+    reviewTimeline.setDuration(totalDur);
+    reviewTimeline.setBackingPeaks(audioEngine.waveformPeaks, audioEngine.backingDuration);
+    reviewTimeline.setVocalTakes(audioEngine.vocalTakes);
+    reviewTimeline.updatePlayhead(0, false);
+
+    // 重置進度條與標籤
+    el.sliderSyncSeek.value = 0;
+    el.lblSyncTime.textContent = `00:00 / ${Utils.formatDuration(totalDur)}`;
+
+    // 顯示後製視窗
+    el.reviewWindowModal.classList.add('open');
+
+    // 自動開始雙軌同步試聽
+    audioEngine.playMixedPreview(0);
+    updateReviewPlayBtn(true);
+    startReviewSyncLoop();
+  }
+
+  el.btnCloseReviewModal.addEventListener('click', () => {
+    audioEngine.stopMixedPreview();
+    stopReviewSyncLoop();
+    updateReviewPlayBtn(false);
+    el.reviewWindowModal.classList.remove('open');
+  });
+
+  function updateReviewPlayBtn(isPlaying) {
+    if (isPlaying) {
+      el.lblPlayPreview.textContent = '暫停播放';
+      el.iconPlayPreview.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="currentColor"></rect><rect x="14" y="4" width="4" height="16" fill="currentColor"></rect>';
+      el.btnTogglePlayPreview.classList.add('active');
+    } else {
+      el.lblPlayPreview.textContent = '播放雙軌混音';
+      el.iconPlayPreview.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+      el.btnTogglePlayPreview.classList.remove('active');
+    }
+  }
+
+  function startReviewSyncLoop() {
+    stopReviewSyncLoop();
+    function syncLoop() {
+      if (audioEngine.isPlayingMix) {
+        const cur = audioEngine.mixCurrentTime;
+        const dur = audioEngine.getReviewDuration();
+
+        el.sliderSyncSeek.value = (cur / dur) * 1000;
+        el.lblSyncTime.textContent = `${Utils.formatDuration(cur)} / ${Utils.formatDuration(dur)}`;
+
+        // 同步驅動後製專屬時間軸指針與歌詞
+        reviewTimeline.updatePlayhead(cur, true);
+        lyricsEngine.update(cur);
+
+        reviewSyncLoopId = requestAnimationFrame(syncLoop);
+      } else {
+        updateReviewPlayBtn(false);
+      }
+    }
+    reviewSyncLoopId = requestAnimationFrame(syncLoop);
+  }
+
+  function stopReviewSyncLoop() {
+    if (reviewSyncLoopId) {
+      cancelAnimationFrame(reviewSyncLoopId);
+      reviewSyncLoopId = null;
+    }
+  }
+
+  el.btnTogglePlayPreview.addEventListener('click', async () => {
+    const isPlaying = await audioEngine.toggleMixedPreview();
+    updateReviewPlayBtn(isPlaying);
+    if (isPlaying) {
+      startReviewSyncLoop();
+    } else {
+      stopReviewSyncLoop();
+    }
+  });
+
+  el.btnResetPreview.addEventListener('click', () => {
+    audioEngine.stopMixedPreview();
+    stopReviewSyncLoop();
+    updateReviewPlayBtn(false);
+
+    const dur = audioEngine.getReviewDuration();
+    el.sliderSyncSeek.value = 0;
+    el.lblSyncTime.textContent = `00:00 / ${Utils.formatDuration(dur)}`;
+    reviewTimeline.updatePlayhead(0, false);
+    lyricsEngine.update(0);
+  });
+
+  el.sliderSyncSeek.addEventListener('input', (e) => {
+    const ratio = parseFloat(e.target.value) / 1000;
+    const dur = audioEngine.getReviewDuration();
+    const target = ratio * dur;
+
+    audioEngine.seekMixedPreview(target);
+    el.lblSyncTime.textContent = `${Utils.formatDuration(target)} / ${Utils.formatDuration(dur)}`;
+    reviewTimeline.updatePlayhead(target, audioEngine.isPlayingMix);
+    lyricsEngine.update(target);
+  });
+
+  // 音量與靜音
+  el.sliderBacking.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    audioEngine.backingVolume = val;
+    el.valBacking.textContent = `${Math.round(val * 100)}%`;
+  });
+
+  el.sliderVocal.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    audioEngine.vocalVolume = val;
+    el.valVocal.textContent = `${Math.round(val * 100)}%`;
+  });
+
+  el.btnMuteBacking.addEventListener('click', () => {
+    audioEngine.backingMuted = !audioEngine.backingMuted;
+    el.btnMuteBacking.textContent = audioEngine.backingMuted ? '已靜音' : '靜音';
+    el.btnMuteBacking.style.color = audioEngine.backingMuted ? 'var(--danger)' : '';
+  });
+
+  el.btnMuteVocal.addEventListener('click', () => {
+    audioEngine.vocalMuted = !audioEngine.vocalMuted;
+    el.btnMuteVocal.textContent = audioEngine.vocalMuted ? '已靜音' : '靜音';
+    el.btnMuteVocal.style.color = audioEngine.vocalMuted ? 'var(--danger)' : '';
+  });
+
+  el.sliderLatency.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value, 10);
+    audioEngine.setLatencyOffset(val);
+    el.valLatency.textContent = `${val > 0 ? '+' : ''}${val} ms`;
+  });
+
+  el.checkReverb.addEventListener('change', (e) => {
+    audioEngine.reverbEnabled = e.target.checked;
+  });
+
+  // 儲存至本地 IndexedDB 作品庫
+  el.btnSaveLocal.addEventListener('click', async () => {
+    const defaultTitle = el.currentTrackTitle.textContent.replace(/\[.*?\]/g, '').trim() || '我的演唱作品';
+    const title = prompt('作品名稱：', defaultTitle);
+    if (title !== null && title.trim()) {
+      try {
+        const fullMeta = {
+          title: title.trim(),
+          sourceType: audioEngine.sourceMode,
+          youtubeId: youtubeManager.currentVideoId,
+          duration: audioEngine.getReviewDuration(),
+          score: 100,
+          rank: 'PRO',
+          vocalBlob: audioEngine.vocalTakes.length > 0 ? audioEngine.vocalTakes[0].blob : null,
+          backingBlob: audioEngine.currentBackingBlob,
+          latencyOffset: audioEngine.latencyOffsetMs,
+          lyrics: lyricsEngine.rawLrcText,
+          takesCount: audioEngine.vocalTakes.length
+        };
+
+        await safeStorage.saveRecording(fullMeta);
+        alert('作品已安全寫入本地 IndexedDB 作品庫。');
+        await refreshLibraryTable();
+        const quota = await safeStorage.getStorageQuota();
+        el.storageQuota.textContent = `儲存保護: ${quota.usageMB} MB / ${quota.quotaMB} MB`;
+      } catch (err) {
+        alert('儲存失敗: ' + err.message);
+      }
+    }
+  });
+
+  // 匯出立體聲 WAV
+  el.btnExportWav.addEventListener('click', async () => {
+    try {
+      el.btnExportWav.textContent = '無損渲染中...';
+      const blob = await audioEngine.exportMixedWavBlob();
+      const trackTitle = el.currentTrackTitle.textContent.replace(/\[.*?\]/g, '').trim() || 'SingStudio';
+      Utils.downloadBlob(blob, `${trackTitle}_Mixed_Master.wav`);
+      el.btnExportWav.textContent = '匯出立體聲混音 WAV';
+    } catch (err) {
+      alert('混音匯出失敗: ' + err.message);
+      el.btnExportWav.textContent = '匯出立體聲混音 WAV';
+    }
+  });
+
+  // ==========================================================================
+  // 作品庫表格渲染
+  // ==========================================================================
+  async function refreshLibraryTable() {
+    const list = await safeStorage.getAllMeta();
+    el.libraryBody.innerHTML = '';
+
+    if (!list || list.length === 0) {
+      el.libraryBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">暫無本地作品</td></tr>';
+      return;
+    }
+
+    list.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="table-title">${Utils.escapeHtml(item.title)}</td>
+        <td>${Utils.formatDuration(item.duration)}</td>
+        <td>${item.takesCount || 1} 段</td>
+        <td>${item.sizeFormatted}</td>
+        <td>${item.dateString}</td>
+        <td>${item.latencyOffset} ms</td>
+        <td>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm btn-primary btn-play-lib" data-id="${item.id}">試聽後製</button>
+            <button class="btn btn-sm btn-del-lib" data-id="${item.id}" style="color:var(--danger);">刪除</button>
+          </div>
+        </td>
+      `;
+
+      tr.querySelector('.btn-play-lib').addEventListener('click', async () => {
+        const full = await safeStorage.getById(item.id);
+        if (full) {
+          if (full.backingBlob) {
+            await audioEngine.loadBackingTrack(full.backingBlob);
+          }
+          if (full.vocalBlob) {
+            audioEngine.vocalTakes = [{
+              id: 'Take_1',
+              startTime: 0,
+              duration: full.duration,
+              blob: full.vocalBlob,
+              url: URL.createObjectURL(full.vocalBlob),
+              peaks: null
+            }];
+          }
+          audioEngine.recordedDuration = full.duration;
+          audioEngine.latencyOffsetMs = full.latencyOffset || 0;
+          if (full.lyrics) {
+            lyricsEngine.parseLRC(full.lyrics);
+          }
+          openReviewModal({});
+        }
+      });
+
+      tr.querySelector('.btn-del-lib').addEventListener('click', async () => {
+        if (confirm(`確定刪除【${item.title}】並釋放空間嗎？`)) {
+          await safeStorage.deleteRecording(item.id);
+          await refreshLibraryTable();
+          const quota = await safeStorage.getStorageQuota();
+          el.storageQuota.textContent = `儲存保護: ${quota.usageMB} MB / ${quota.quotaMB} MB`;
+        }
+      });
+
+      el.libraryBody.appendChild(tr);
+    });
+  }
+
+  // 1-Click 複製互動卡片綁定
+  document.querySelectorAll('.config-item').forEach(card => {
+    card.addEventListener('click', () => {
+      const val = card.querySelector('.config-val') ? card.querySelector('.config-val').textContent : card.textContent;
+      const hint = card.querySelector('.copy-hint');
+      Utils.copyText(val, hint);
+    });
+  });
+});
