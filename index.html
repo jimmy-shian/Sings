@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SingStudio - 專業雙軌音訊工作站</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- 頂部 OpenDesign 高對比導航列 -->
+  <header class="top-nav">
+    <div class="nav-left">
+      <div class="logo">
+        <svg class="icon-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M8 12l2 2 4-4"></path>
+        </svg>
+        <span class="logo-text">SingStudio</span>
+        <span class="badge-tag">DAW PRO</span>
+      </div>
+    </div>
+
+    <div class="nav-right">
+      <div class="config-summary">
+        <div class="config-item" title="點擊複製儲存配額狀態">
+          <span class="config-key" id="storageQuotaBadge">儲存保護: 計算中...</span>
+          <span class="copy-hint">複製</span>
+        </div>
+        <div class="config-item" title="點擊複製音訊引擎狀態">
+          <span class="config-key" id="audioStatusBadge">音訊核心就緒</span>
+          <span class="copy-hint">複製</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+
+    <!-- 當前音軌狀態摘要列 -->
+    <div class="track-status-bar">
+      <div class="track-info">
+        <span class="status-indicator"></span>
+        <span class="track-title-text" id="currentTrackTitle">尚未載入伴奏音樂</span>
+        <span class="track-meta" id="currentTrackMeta">請在下方選取伴奏來源 (本地音訊 / YouTube / 示範和弦)</span>
+      </div>
+      <div class="track-actions">
+        <button id="btnQuickRecord" class="btn btn-sm btn-primary">快速錄製</button>
+      </div>
+    </div>
+
+    <!-- 核心一頁式雙欄佈局 (電腦版左右橫向雙欄，手機版直式堆疊) -->
+    <div class="workspace-grid">
+
+      <!-- 左欄：伴奏來源與動態字幕歌詞（整合於單一卡片，透過按鈕切換，與右欄完美平行） -->
+      <div class="left-column">
+        <div id="panelLeftMain" class="panel panel-equal-height">
+          <div class="panel-header">
+            <!-- 伴奏 / 字幕 切換按鈕組 -->
+            <div class="tab-pill-group">
+              <button id="btnTabSource" class="tab-pill-btn active" type="button">伴奏來源</button>
+              <button id="btnTabLyrics" class="tab-pill-btn" type="button">同步字幕歌詞 (LRC)</button>
+            </div>
+            <span class="panel-tag" id="sourceModeBadge">[YouTube 直連]</span>
+          </div>
+
+          <!-- 檢視 A: 伴奏來源面板 -->
+          <div id="viewSource" class="parallel-view active">
+            <!-- 伴奏來源模式切換頁籤 -->
+            <div class="tab-group" style="margin-bottom: 12px;">
+              <button id="tabLocal" class="tab-btn" type="button">本地檔案 (MP3/WAV)</button>
+              <button id="tabYouTube" class="tab-btn active" type="button">YouTube 直連搜尋</button>
+              <button id="tabDemo" class="tab-btn" type="button">內建示範和弦</button>
+            </div>
+
+            <!-- 面板 1-A: 本地檔案上傳與獨立試聽播放器 -->
+            <div id="paneLocal" class="source-pane">
+              <div id="dropzone" class="dropzone">
+                <svg class="icon" style="width: 36px; height: 36px;" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <div class="dropzone-title">拖曳伴奏音訊至此，或點擊選取</div>
+                <div class="dropzone-hint">支援 MP3, WAV, M4A, FLAC 音訊格式</div>
+                <button id="btnBrowseLocal" class="btn btn-sm btn-primary" type="button" style="margin-top: 6px;">選擇本地檔案</button>
+              </div>
+              <input type="file" id="fileBackingInput" accept="audio/*" style="display: none;">
+
+              <!-- 本地伴奏獨立試聽播放器 (時間軸連動) -->
+              <div id="localTrackPlayerBox" class="track-player-bar" style="display: none; margin-top: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <span id="lblLocalFileName" style="font-weight: 600; font-size: 15px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">已載入伴奏</span>
+                  <button id="btnChangeLocalFile" class="btn btn-sm" type="button">更換檔案</button>
+                </div>
+                <div class="player-controls-row">
+                  <button id="btnPlayBackingOnly" class="btn btn-sm btn-primary" type="button">▶ 試聽伴奏</button>
+                  <input type="range" id="sliderBackingSeek" class="player-seekbar" min="0" max="1000" value="0">
+                  <span id="lblBackingTime" class="player-time-display">00:00 / 00:00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 面板 1-B: YouTube 直連搜尋 -->
+            <div id="paneYouTube" class="source-pane active">
+              <div class="search-bar">
+                <input type="text" id="ytSearchInput" class="input-text" placeholder="輸入歌曲關鍵字或貼上 YouTube 網址 (如: 晴天 伴奏)...">
+                <button id="btnYtSearch" class="btn btn-primary" type="button">搜尋 / 載入</button>
+              </div>
+
+              <div id="ytPlayerBox" class="yt-player-box">
+                <div id="youtubePlayerContainer"></div>
+              </div>
+
+              <div id="ytResults" class="yt-results-list">
+                <div style="padding: 14px; color: var(--text-muted); font-size: 15px; text-align: center;">
+                  輸入關鍵字點擊「搜尋」，或直接貼上 YouTube 網址載入伴奏
+                </div>
+              </div>
+            </div>
+
+            <!-- 面板 1-C: 內建和弦進行 -->
+            <div id="paneDemo" class="source-pane">
+              <div style="padding: 16px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-weight: 600; font-size: 16px;">卡農經典和弦進行 (C - G - Am - Em - F - C - F - G)</div>
+                  <div style="color: var(--text-muted); font-size: 14.5px; margin-top: 2px;">內建 56 秒無損合成伴奏</div>
+                </div>
+                <button id="btnLoadDemo" class="btn btn-primary" type="button">載入示範伴奏</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 檢視 B: 動態同步字幕歌詞 (錄音時與右側操作區塊完全平行並列) -->
+          <div id="viewLyrics" class="parallel-view" style="display: none;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; justify-content: space-between; align-items: center;">
+              <span style="font-size: 14.5px; font-weight: 600; color: var(--text-secondary);">同步字幕視窗</span>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button id="btnSearchLrc" class="btn btn-sm btn-primary" type="button">
+                  <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  搜尋同步歌詞 (LRCLIB)
+                </button>
+                <button id="btnImportLrc" class="btn btn-sm" type="button">匯入 LRC</button>
+                <button id="btnExportLrc" class="btn btn-sm" type="button">匯出 LRC</button>
+                <input type="file" id="fileLrcInput" accept=".lrc,.txt" style="display: none;">
+              </div>
+            </div>
+
+            <!-- 60 FPS 平滑視差捲動歌詞容器 -->
+            <div id="lyricsBox" class="lyrics-box lyrics-box-tall">
+              <!-- 由 lyrics.js 動態產生 -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右欄：即時伴奏音訊軸與聲波流 (錄音操作工作區) -->
+      <div class="right-column">
+        <div id="panelVisualizer" class="panel panel-equal-height">
+          <div class="panel-header">
+            <span class="panel-title">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M2 10s3-3 5-3 5 6 7 6 5-6 8-6"></path></svg>
+              <span id="visualizerTitle">即時伴奏音訊軸與聲波流</span>
+            </span>
+            <!-- 縮放控制項 (支援滑鼠滾輪 Zoom) -->
+            <div class="timeline-zoom-controls">
+              <button id="btnZoomOut" class="btn btn-sm" type="button" title="縮小時間軸 (可使用滑鼠滾輪)">-</button>
+              <span id="lblZoomLevel" class="zoom-badge">1.0x</span>
+              <button id="btnZoomIn" class="btn btn-sm" type="button" title="放大時間軸 (可使用滑鼠滾輪)">+</button>
+              <button id="btnZoomReset" class="btn btn-sm" type="button" title="重置為 1:1">1:1</button>
+            </div>
+          </div>
+
+          <!-- 專業音訊雙軌時間軸畫布 (伴奏軌 + 人聲軌，支援點擊/拖動跳轉與滾輪縮放) -->
+          <div class="visualizer-card">
+            <canvas id="mainTimelineCanvas"></canvas>
+          </div>
+
+          <!-- 專業音訊儀表列 (移除音準分數與評分，改為專業真實電平與時間) -->
+          <div class="audio-metrics-bar">
+            <div class="metric-group">
+              <span class="metric-tag-lbl">時鐘位置:</span>
+              <span id="lblRecordTime" class="metric-time-num">00:00.0 / 00:00.0</span>
+            </div>
+
+            <div class="metric-group flex-1">
+              <span class="metric-tag-lbl">麥克風輸入電平:</span>
+              <div class="vu-meter-track">
+                <div id="vuLevelBar" class="vu-meter-fill"></div>
+              </div>
+              <span id="lblInputDb" class="metric-db-num">-60 dB</span>
+            </div>
+
+            <div class="metric-group">
+              <span id="lblTrackStatus" class="panel-tag">[待機中]</span>
+            </div>
+          </div>
+
+          <!-- 錄製主操作按鈕列 (支援接續錄製 Punch-in) -->
+          <div class="action-bar">
+            <button id="btnRecordStart" class="btn btn-record" type="button">
+              <svg class="icon" style="stroke: #ffffff;" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              開始錄製 (伴奏 + 麥克風)
+            </button>
+
+            <button id="btnRecordPause" class="btn btn-warning" type="button" style="display: none;">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+              暫停錄製
+            </button>
+
+            <button id="btnRecordResume" class="btn btn-primary" type="button" style="display: none;">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+              接續錄製 (Punch-in)
+            </button>
+
+            <button id="btnRecordFinish" class="btn btn-success" type="button" style="display: none;">
+              <svg class="icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              完成演唱 · 進入後製混音
+            </button>
+
+            <button id="btnRecordReset" class="btn" type="button" style="display: none;">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+              重新開始
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 本地作品庫管理 (OpenDesign 簡約數據表) -->
+    <div class="panel" style="margin-top: 18px;">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          本地作品庫
+        </span>
+        <span class="panel-tag">[LOCAL-FIRST · INDEXEDDB]</span>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>作品名稱</th>
+              <th>時長</th>
+              <th>片段數</th>
+              <th>檔案大小</th>
+              <th>錄製時間</th>
+              <th>延遲補償</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="libraryBody">
+            <!-- 由 JS 動態產生 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 獨立後製混音專屬視窗 (完全獨立於錄音畫面，具備專屬動態時間軸) -->
+  <div id="reviewWindowModal" class="modal-backdrop">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="review-modal-header">
+        <div>
+          <h2 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0;">
+            [POST-PRODUCTION] 演唱完成 · 獨立雙軌混音後製視窗
+          </h2>
+          <p style="font-size: 15px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 0;">
+            已將錄音片段安全寫入本機磁碟 temp_ 暫存。試聽時時間軸即時前進，支援雙軌獨立微調與無損 WAV 匯出。
+          </p>
+        </div>
+        <button id="btnCloseReviewModal" class="btn btn-sm" type="button">關閉 / 返回錄音</button>
+      </div>
+
+      <!-- 後製視窗專屬時間軸畫布 (伴奏軌 + 人聲軌) -->
+      <div class="review-canvas-box">
+        <div class="review-canvas-toolbar">
+          <span style="font-size: 14.5px; font-weight: 600; color: var(--text-secondary);">雙軌混音波形預覽 (可滾輪縮放與拖動指針)</span>
+          <div class="timeline-zoom-controls">
+            <button id="btnReviewZoomOut" class="btn btn-sm" type="button">-</button>
+            <span id="lblReviewZoom" class="zoom-badge">1.0x</span>
+            <button id="btnReviewZoomIn" class="btn btn-sm" type="button">+</button>
+          </div>
+        </div>
+        <canvas id="reviewTimelineCanvas" style="width: 100%; height: 160px;"></canvas>
+      </div>
+
+      <!-- 後製主播放控制行 -->
+      <div class="review-master-bar">
+        <button id="btnTogglePlayPreview" class="btn btn-primary" type="button">
+          <svg id="iconPlayPreview" class="icon" style="stroke: #ffffff;" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <span id="lblPlayPreview">播放雙軌混音</span>
+        </button>
+        <button id="btnResetPreview" class="btn" type="button">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"></path></svg>
+          重置開頭
+        </button>
+
+        <div class="sync-seekbar-wrap" style="flex: 1;">
+          <input type="range" id="sliderSyncSeek" class="sync-seekbar" min="0" max="1000" value="0">
+          <span id="lblSyncTime" class="sync-time-lbl">00:00 / 00:00</span>
+        </div>
+      </div>
+
+      <!-- 混音調節器 -->
+      <div class="mixer-grid" style="margin-top: 14px;">
+        <div class="slider-unit">
+          <div class="slider-header">
+            <span>伴奏音量</span>
+            <span id="valBacking" class="slider-val">80%</span>
+          </div>
+          <input type="range" id="sliderBacking" class="range-input" min="0" max="1" step="0.05" value="0.8">
+          <div style="display: flex; justify-content: flex-end;">
+            <button id="btnMuteBacking" class="btn btn-sm" type="button">靜音</button>
+          </div>
+        </div>
+
+        <div class="slider-unit">
+          <div class="slider-header">
+            <span>人聲音量</span>
+            <span id="valVocal" class="slider-val">100%</span>
+          </div>
+          <input type="range" id="sliderVocal" class="range-input" min="0" max="2" step="0.05" value="1.0">
+          <div style="display: flex; justify-content: flex-end;">
+            <button id="btnMuteVocal" class="btn btn-sm" type="button">靜音</button>
+          </div>
+        </div>
+
+        <div class="slider-unit">
+          <div class="slider-header">
+            <span>人聲延遲校準 (解決不同步)</span>
+            <span id="valLatency" class="slider-val" style="color: var(--accent);">-40 ms</span>
+          </div>
+          <input type="range" id="sliderLatency" class="range-input" min="-250" max="250" step="5" value="-40">
+          <div class="slider-hint">人聲比伴奏慢請往左調，比伴奏快請往右調</div>
+        </div>
+
+        <div class="slider-unit" style="justify-content: center;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 15px; font-weight: 600;">KTV 空間殘響 (Reverb)</div>
+              <div style="font-size: 14px; color: var(--text-muted);">自然立體環繞包廂效果</div>
+            </div>
+            <input type="checkbox" id="checkReverb" checked style="width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer;">
+          </div>
+        </div>
+      </div>
+
+      <!-- 匯出與儲存操作按鈕 -->
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);">
+        <button id="btnSaveLocal" class="btn" style="border-color: var(--success); color: var(--success);" type="button">
+          儲存至本地作品庫
+        </button>
+        <button id="btnExportWav" class="btn btn-primary" type="button">
+          匯出立體聲混音 WAV
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LRCLIB 免費歌詞庫搜尋對話框 -->
+  <div id="modalLrc" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 style="font-size: 17px; font-weight: 700;">搜尋全球開放同步歌詞 (LRCLIB)</h3>
+        <button id="btnCloseLrcModal" class="btn btn-sm" type="button">關閉</button>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="lrcSearchQuery" class="input-text" placeholder="輸入歌曲名或歌手 (例如: 晴天)...">
+        <button id="btnDoLrcSearch" class="btn btn-primary" type="button">搜尋</button>
+      </div>
+
+      <div id="lrcResultsList" class="yt-results-list">
+        <!-- 搜尋結果 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 按依賴順序載入模組 -->
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/youtube.js"></script>
+  <script src="js/timeline.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/lyrics.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
