@@ -324,33 +324,26 @@ class AudioEngine {
   }
 
   // ==========================================================================
-  // 錄製流程：開始 / 暫停 / 接續錄製 (Punch-in) / 停止
+  // 錄製流程：開始 / 暫停 / 接續錄製 (Punch-in) / 停止 / Take 編輯
   // ==========================================================================
 
   /**
    * 開始或接續錄製
    * @param {number} atTimeSec - 起始時間戳 (支援接續錄製)
+   * @param {number|null} limitDuration - 限制錄製時長 (用於「僅重錄此段」，達時長自動停止)
    */
-  async startSinging(atTimeSec = 0) {
+  async startSinging(atTimeSec = 0, limitDuration = null) {
     await this.initMicrophone();
     this.pauseBackingOnly();
     this.stopMixedPreview();
 
-    // 接續錄製 (Punch-in) 處理：截斷或覆蓋目前時間點之後的舊片段
-    if (atTimeSec > 0 && this.vocalTakes.length > 0) {
-      this.vocalTakes = this.vocalTakes.filter(t => t.startTime < atTimeSec);
-      // 若有片段跨越 atTimeSec，裁切其時長
-      this.vocalTakes.forEach(t => {
-        if (t.startTime + t.duration > atTimeSec) {
-          t.duration = atTimeSec - t.startTime;
-        }
-      });
-    } else if (atTimeSec === 0 && !this.isPaused) {
-      // 全新開始錄製，清空 Takes
+    // 接續錄製 (Punch-in)：保留所有先前與後續 Takes，不強制覆蓋
+    if (atTimeSec === 0 && !this.isPaused && this.vocalTakes.length === 0) {
       this.vocalTakes = [];
     }
 
     this.currentTakeStartTime = Math.max(0, atTimeSec);
+    this.punchInEndLimit = limitDuration ? (this.currentTakeStartTime + limitDuration) : null;
     this.activeTakeChunks = [];
     this.recordingStartTime = performance.now() - (this.currentTakeStartTime * 1000);
 
@@ -399,13 +392,17 @@ class AudioEngine {
     }
 
     const currentClockTime = this.getCurrentTime();
-    const takeDuration = Math.max(0.1, currentClockTime - this.currentTakeStartTime);
+    let takeDuration = Math.max(0.1, currentClockTime - this.currentTakeStartTime);
+    
+    // 若有設定限制終點，時長上限為該範圍
+    if (this.punchInEndLimit && this.currentTakeStartTime + takeDuration > this.punchInEndLimit) {
+      takeDuration = Math.max(0.1, this.punchInEndLimit - this.currentTakeStartTime);
+    }
 
     // 停止 MediaRecorder 並封裝 Take
     await new Promise((resolve) => {
       this.mediaRecorder.onstop = async () => {
         const takeBlob = new Blob(this.activeTakeChunks, { type: this.mediaRecorder.mimeType || 'audio/webm' });
-        const takeId = `Take_${this.vocalTakes.length + 1}`;
         const tempName = `temp_vocal_${Date.now()}_take${this.vocalTakes.length + 1}.webm`;
 
         // 上傳至本機磁碟 temp_ 暫存目錄
@@ -415,7 +412,7 @@ class AudioEngine {
         const wave = await this.extractWaveformPeaks(takeBlob, 120);
 
         this.vocalTakes.push({
-          id: takeId,
+          id: `Take_${this.vocalTakes.length + 1}`,
           startTime: this.currentTakeStartTime,
           duration: takeDuration,
           blob: takeBlob,
@@ -423,7 +420,11 @@ class AudioEngine {
           peaks: wave ? wave.peaks : null
         });
 
+        // 依時間排序並重新指派序號，確保 Take 序號連續
+        this.reindexTakes();
+
         this.activeTakeChunks = [];
+        this.punchInEndLimit = null;
         resolve();
       };
       this.mediaRecorder.stop();
@@ -433,6 +434,42 @@ class AudioEngine {
     this.isPaused = true;
     this.recordedDuration = Math.max(this.recordedDuration, currentClockTime);
     return this.vocalTakes;
+  }
+
+  /**
+   * 重新排序並命名 Takes
+   */
+  reindexTakes() {
+    this.vocalTakes.sort((a, b) => a.startTime - b.startTime);
+    this.vocalTakes.forEach((t, idx) => {
+      t.id = `Take_${idx + 1}`;
+    });
+  }
+
+  /**
+   * 刪除指定 Take
+   */
+  deleteTake(takeId) {
+    this.vocalTakes = this.vocalTakes.filter(t => t.id !== takeId);
+    this.reindexTakes();
+    return this.vocalTakes;
+  }
+
+  /**
+   * 僅重錄此段 Take (自動限制起始與結束時間，避免覆蓋別段)
+   */
+  async reRecordTake(takeId) {
+    const targetTake = this.vocalTakes.find(t => t.id === takeId);
+    if (!targetTake) return;
+
+    const startSec = targetTake.startTime;
+    const durSec = targetTake.duration;
+
+    // 先移除舊的 Take
+    this.deleteTake(takeId);
+
+    // 以其原始時長啟動限時錄製
+    await this.startSinging(startSec, durSec);
   }
 
   /**
@@ -478,11 +515,12 @@ class AudioEngine {
   }
 
   getCurrentTime() {
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      const ytTime = window.youtubeManager.getCurrentTime();
+      if (ytTime > 0 || this.isRecording) return ytTime;
+    }
     if (this.isRecording) {
       return Math.max(0, (performance.now() - this.recordingStartTime) / 1000);
-    }
-    if (this.sourceMode === 'youtube' && window.youtubeManager) {
-      return window.youtubeManager.getCurrentTime();
     }
     return this.backingAudio.currentTime || 0;
   }
