@@ -1,0 +1,132 @@
+name: Build & Release SingStudio (EXE & APK)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================================================
+  # 1. 編譯 Windows 單一執行檔 (.exe)
+  # ==========================================================================
+  build-windows:
+    name: Build Windows Standalone EXE
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Compile Standalone Windows EXE
+        run: |
+          pyinstaller --noconfirm --onefile --name "SingStudio-Windows-x64" --add-data "index.html;." --add-data "css;css" --add-data "js;js" server.py
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SingStudio-Windows-x64
+          path: dist/SingStudio-Windows-x64.exe
+
+  # ==========================================================================
+  # 2. 編譯 Android 安裝套件 (.apk)
+  # ==========================================================================
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Initialize Capacitor Android Project
+        run: |
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap init SingStudio com.singstudio.app --web-dir .
+          npx cap add android
+          npx cap sync android
+
+      - name: Build Android APK (Gradle)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK Output
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk SingStudio-Android.apk
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SingStudio-Android-APK
+          path: SingStudio-Android.apk
+
+  # ==========================================================================
+  # 3. 發布 GitHub Release 並附帶下載資產
+  # ==========================================================================
+  release:
+    name: Publish GitHub Release Assets
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Windows EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: SingStudio-Windows-x64
+
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: SingStudio-Android-APK
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SingStudio Release ${{ github.ref_name }}
+          body: |
+            ### 🎵 SingStudio ${{ github.ref_name }} 自動編譯發佈
+            
+            本版本由 GitHub Actions 自動建置發布，包含：
+            - **Windows 免安裝執行檔**：`SingStudio-Windows-x64.exe`（直接雙擊即可啟動工作站）
+            - **Android 安裝套件**：`SingStudio-Android.apk`（安裝於手機平板隨身練唱）
+
+            #### 亮點功能：
+            - YouTube 免費直連搜尋與 25 FPS 時間軸雙向連動
+            - 空白鍵快速播放/暫停快捷鍵
+            - 支援接續錄製 (Punch-in)、多段 Takes 單獨重錄與防覆蓋機制
+            - 時間軸磁鐵吸附 (Magnetic Snap) 與 Shift+滾輪自由水平平移
+            - 動態字幕起點平移校準 (Offset) 與平滑居中捲動
+          files: |
+            SingStudio-Windows-x64.exe
+            SingStudio-Android.apk
