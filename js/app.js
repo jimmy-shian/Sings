@@ -61,6 +61,20 @@ document.addEventListener('DOMContentLoaded', () => {
     btnZoomIn: document.getElementById('btnZoomIn'),
     btnZoomOut: document.getElementById('btnZoomOut'),
     btnZoomReset: document.getElementById('btnZoomReset'),
+    btnTimelinePanLeft: document.getElementById('btnTimelinePanLeft'),
+    btnTimelinePanRight: document.getElementById('btnTimelinePanRight'),
+
+    // 歌詞時間位移校準
+    btnLyricsOffsetMinus: document.getElementById('btnLyricsOffsetMinus'),
+    lblLyricsOffset: document.getElementById('lblLyricsOffset'),
+    btnLyricsOffsetPlus: document.getElementById('btnLyricsOffsetPlus'),
+    btnLyricsOffsetReset: document.getElementById('btnLyricsOffsetReset'),
+    btnLyricsSetAnchor: document.getElementById('btnLyricsSetAnchor'),
+
+    // Takes 分段管理
+    vocalTakesContainer: document.getElementById('vocalTakesContainer'),
+    lblTakesCount: document.getElementById('lblTakesCount'),
+    vocalTakesList: document.getElementById('vocalTakesList'),
 
     // 音訊電平儀表 (無評分)
     lblRecordTime: document.getElementById('lblRecordTime'),
@@ -307,6 +321,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 伴奏單獨播放：時間軸指針與波形隨 60FPS 平滑推移
   el.btnPlayBackingOnly.addEventListener('click', () => {
+    if (audioEngine.sourceMode === 'youtube' && window.youtubeManager) {
+      if (window.youtubeManager.isPlaying) {
+        window.youtubeManager.pause();
+        updateBackingSoloBtn(false);
+      } else {
+        window.youtubeManager.play();
+        updateBackingSoloBtn(true);
+      }
+      return;
+    }
+
     const isPlaying = audioEngine.toggleBackingOnly();
     updateBackingSoloBtn(isPlaying);
 
@@ -343,9 +368,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const ratio = parseFloat(e.target.value) / 1000;
     const dur = audioEngine.backingDuration || 60;
     const target = ratio * dur;
-    audioEngine.seekBackingOnly(target);
+    if (audioEngine.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.seekTo(target);
+    } else {
+      audioEngine.seekBackingOnly(target);
+    }
     el.lblBackingTime.textContent = `${Utils.formatDuration(target)} / ${Utils.formatDuration(dur)}`;
-    mainTimeline.updatePlayhead(target, audioEngine.isBackingSoloPlaying);
+    mainTimeline.updatePlayhead(target, audioEngine.isBackingSoloPlaying || (window.youtubeManager && window.youtubeManager.isPlaying));
     lyricsEngine.update(target);
     updateRecordTimeDisplay(target);
   });
@@ -435,11 +464,43 @@ document.addEventListener('DOMContentLoaded', () => {
     el.currentTrackMeta.textContent = `[YouTube 直連] ID: ${videoId}`;
     el.audioStatus.textContent = 'YouTube 就緒';
 
-    // 預設時長 180 秒，可隨播放獲取
-    mainTimeline.setDuration(180);
-    mainTimeline.setBackingPeaks(null, 180);
-    mainTimeline.updatePlayhead(0, false);
-    updateRecordTimeDisplay(0);
+    // 顯示伴奏控制列，供使用者在 YouTube 模式下亦可使用播放/跳轉滑桿
+    el.localTrackPlayerBox.style.display = 'block';
+    el.lblLocalFileName.textContent = title;
+    el.lblBackingTime.textContent = '00:00 / 載入中...';
+    el.sliderBackingSeek.value = 0;
+    updateBackingSoloBtn(false);
+
+    // YouTube 取得真實時長時自動同步
+    youtubeManager.onDurationChangeCallback = (dur) => {
+      if (dur > 0) {
+        audioEngine.backingDuration = dur;
+        mainTimeline.setDuration(dur);
+        reviewTimeline.setDuration(dur);
+        el.lblBackingTime.textContent = `00:00 / ${Utils.formatDuration(dur)}`;
+        updateRecordTimeDisplay(mainTimeline.currentTime);
+      }
+    };
+
+    // YouTube 播放時 25 FPS 精準同步驅動時間軸與歌詞
+    youtubeManager.onTimeUpdateCallback = (curTime, isPlaying, dur) => {
+      if (dur > 0 && Math.abs(dur - (audioEngine.backingDuration || 0)) > 1.0) {
+        audioEngine.backingDuration = dur;
+        mainTimeline.setDuration(dur);
+        reviewTimeline.setDuration(dur);
+      }
+      updateBackingSoloBtn(isPlaying);
+      if (!audioEngine.isRecording) {
+        mainTimeline.updatePlayhead(curTime, isPlaying);
+        lyricsEngine.update(curTime);
+        updateRecordTimeDisplay(curTime);
+        const totalDur = dur || audioEngine.backingDuration || 60;
+        if (totalDur > 0) {
+          el.sliderBackingSeek.value = (curTime / totalDur) * 1000;
+          el.lblBackingTime.textContent = `${Utils.formatDuration(curTime)} / ${Utils.formatDuration(totalDur)}`;
+        }
+      }
+    };
 
     lyricsEngine.clearLyrics(`已選擇【${title}】。點擊上方「搜尋同步歌詞」或匯入 .lrc。`);
   }
@@ -532,6 +593,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!audioEngine.isRecording) return;
 
       const curTime = audioEngine.getCurrentTime();
+
+      // 檢查限時重錄：達目標時長自動停止，保護後續片段
+      if (audioEngine.punchInEndLimit && curTime >= audioEngine.punchInEndLimit) {
+        el.btnRecordPause.click();
+        return;
+      }
+
       const audioData = audioEngine.getLiveAudioData();
 
       // 1. 更新真實音訊電平表 (VU Meter) 與 dB
@@ -586,6 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const takes = await audioEngine.pauseSinging();
     mainTimeline.clearLiveVocalWave();
     mainTimeline.setVocalTakes(takes);
+    renderVocalTakesList();
 
     // 切換按鈕狀態 (顯示接續錄製與完成按鈕)
     el.btnRecordPause.style.display = 'none';
@@ -626,6 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mainTimeline.setVocalTakes([]);
       mainTimeline.updatePlayhead(0, false);
       updateRecordTimeDisplay(0);
+      renderVocalTakesList();
 
       el.btnRecordStart.style.display = 'inline-flex';
       el.btnRecordPause.style.display = 'none';
@@ -907,6 +977,166 @@ document.addEventListener('DOMContentLoaded', () => {
 
       el.libraryBody.appendChild(tr);
     });
+  }
+
+  // ==========================================================================
+  // Takes 錄製分段管理與單獨重錄
+  // ==========================================================================
+  function renderVocalTakesList() {
+    if (!el.vocalTakesContainer || !el.vocalTakesList) return;
+    const takes = audioEngine.vocalTakes || [];
+    if (takes.length === 0) {
+      el.vocalTakesContainer.style.display = 'none';
+      return;
+    }
+    el.vocalTakesContainer.style.display = 'block';
+    el.lblTakesCount.textContent = `${takes.length} 個片段`;
+    el.vocalTakesList.innerHTML = '';
+
+    takes.forEach(take => {
+      const row = document.createElement('div');
+      row.className = 'takes-row';
+      const startFmt = Utils.formatDuration(take.startTime);
+      const endFmt = Utils.formatDuration(take.startTime + take.duration);
+      row.innerHTML = `
+        <div>
+          <span class="take-title">${take.id}</span>
+          <span class="take-dur">(${startFmt} ~ ${endFmt}, ${take.duration.toFixed(1)}s)</span>
+        </div>
+        <div class="take-actions">
+          <button class="btn btn-sm btn-play-take" title="播放此 Take">▶ 試聽</button>
+          <button class="btn btn-sm btn-warning btn-rerecord-take" title="自動限制起訖時長，僅重錄本段">↻ 僅重錄此段</button>
+          <button class="btn btn-sm btn-del-take" style="color: var(--danger);" title="刪除此 Take">× 刪除</button>
+        </div>
+      `;
+
+      row.querySelector('.btn-play-take').addEventListener('click', () => {
+        const a = new Audio(take.url);
+        a.play();
+      });
+
+      row.querySelector('.btn-rerecord-take').addEventListener('click', async () => {
+        if (audioEngine.isRecording) return;
+        if (confirm(`確定要重錄【${take.id}】嗎？系統將從 ${startFmt} 開始，並在錄滿 ${take.duration.toFixed(1)} 秒後自動停止，絕不覆蓋別段。`)) {
+          mainTimeline.currentTime = take.startTime;
+          mainTimeline.updatePlayhead(take.startTime, false);
+          await audioEngine.reRecordTake(take.id);
+          
+          el.btnRecordStart.style.display = 'none';
+          el.btnRecordPause.style.display = 'inline-flex';
+          el.btnRecordResume.style.display = 'none';
+          el.btnRecordFinish.style.display = 'none';
+          el.btnRecordReset.style.display = 'none';
+          el.lblTrackStatus.textContent = `[僅重錄 ${take.id} · REC]`;
+          el.lblTrackStatus.style.color = 'var(--danger)';
+
+          mainTimeline.setVocalTakes(audioEngine.vocalTakes);
+          renderVocalTakesList();
+          startLiveRecordLoop();
+        }
+      });
+
+      row.querySelector('.btn-del-take').addEventListener('click', () => {
+        if (confirm(`確定刪除【${take.id}】嗎？`)) {
+          audioEngine.deleteTake(take.id);
+          mainTimeline.setVocalTakes(audioEngine.vocalTakes);
+          reviewTimeline.setVocalTakes(audioEngine.vocalTakes);
+          renderVocalTakesList();
+        }
+      });
+
+      el.vocalTakesList.appendChild(row);
+    });
+  }
+
+  // ==========================================================================
+  // 時間軸視窗平移控制項 (Pan View)
+  // ==========================================================================
+  if (el.btnTimelinePanLeft) {
+    el.btnTimelinePanLeft.addEventListener('click', () => mainTimeline.panLeft());
+  }
+  if (el.btnTimelinePanRight) {
+    el.btnTimelinePanRight.addEventListener('click', () => mainTimeline.panRight());
+  }
+
+  // ==========================================================================
+  // 字幕時間軸整體平移校準 (Offset)
+  // ==========================================================================
+  function updateLyricsOffsetDisplay() {
+    const off = lyricsEngine.offsetSec;
+    if (el.lblLyricsOffset) {
+      el.lblLyricsOffset.textContent = (off >= 0 ? '+' : '') + off.toFixed(1) + 's';
+    }
+  }
+
+  if (el.btnLyricsOffsetMinus) {
+    el.btnLyricsOffsetMinus.addEventListener('click', () => {
+      lyricsEngine.addOffset(-0.5);
+      updateLyricsOffsetDisplay();
+    });
+  }
+  if (el.btnLyricsOffsetPlus) {
+    el.btnLyricsOffsetPlus.addEventListener('click', () => {
+      lyricsEngine.addOffset(0.5);
+      updateLyricsOffsetDisplay();
+    });
+  }
+  if (el.btnLyricsOffsetReset) {
+    el.btnLyricsOffsetReset.addEventListener('click', () => {
+      lyricsEngine.setOffset(0);
+      updateLyricsOffsetDisplay();
+    });
+  }
+  if (el.btnLyricsSetAnchor) {
+    el.btnLyricsSetAnchor.addEventListener('click', () => {
+      const cur = audioEngine.getCurrentTime();
+      lyricsEngine.setAnchorAtCurrentTime(cur);
+      updateLyricsOffsetDisplay();
+    });
+  }
+
+  // ==========================================================================
+  // 電腦端快捷鍵：空白鍵快速播放 / 暫停
+  // ==========================================================================
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+      const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || (document.activeElement && document.activeElement.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      handleSpacebarToggle();
+    }
+  });
+
+  function handleSpacebarToggle() {
+    // 1. 如果獨立後製視窗已開啟，控制混音試聽
+    if (el.reviewWindowModal && el.reviewWindowModal.classList.contains('open')) {
+      el.btnTogglePlayPreview.click();
+      return;
+    }
+    // 2. 如果正在錄製中，暫停錄製
+    if (audioEngine.isRecording) {
+      el.btnRecordPause.click();
+      return;
+    }
+    // 3. 如果錄製已暫停，接續錄製
+    if (audioEngine.isPaused) {
+      el.btnRecordResume.click();
+      return;
+    }
+    // 4. 否則切換伴奏單播試聽
+    if (audioEngine.sourceMode === 'youtube' && window.youtubeManager) {
+      if (window.youtubeManager.isPlaying) {
+        window.youtubeManager.pause();
+        updateBackingSoloBtn(false);
+      } else {
+        window.youtubeManager.play();
+        updateBackingSoloBtn(true);
+      }
+    } else {
+      el.btnPlayBackingOnly.click();
+    }
   }
 
   // 1-Click 複製互動卡片綁定
