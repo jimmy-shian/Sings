@@ -19,7 +19,16 @@ import os
 import time
 
 PORT = 8088
-DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    DIRECTORY = sys._MEIPASS
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = DIRECTORY
+
+TEMP_DIR = os.path.join(BASE_DIR, "temp_recordings")
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 class SingStudioHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -134,6 +143,16 @@ if __name__ == '__main__':
     print(f"==================================================")
     print(f"SingStudio 高可用伺服器啟動中: http://localhost:{PORT}")
     print(f"==================================================")
+
+    import threading
+    import webbrowser
+    def auto_open_browser():
+        time.sleep(1.2)
+        try:
+            webbrowser.open(f"http://localhost:{PORT}")
+        except Exception:
+            pass
+    threading.Thread(target=auto_open_browser, daemon=True).start()
 
     while True:
         try:

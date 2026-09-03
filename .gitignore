@@ -3,6 +3,11 @@ temp_recordings/
 *.webm
 *.wav
 
+# 本機編譯輸出
+dist/
+build/
+*.spec
+
 # Python 快取
 __pycache__/
 *.pyc
