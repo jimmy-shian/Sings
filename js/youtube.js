@@ -5,17 +5,27 @@
  * 1. 100% 免費無須 API Key：支援直連 YouTube IFrame 官方嵌入 API。
  * 2. 智慧搜尋：透過後端 Python 代理或備用語意搜尋直接獲取影片 ID、標題、時長。
  * 3. 貼上連結即播：支援完整 YouTube 網址 (watch?v=)、短網址 (youtu.be/) 或 11 碼 ID。
- * 4. 與錄音/歌詞精準同步：提供 play、pause、seekTo、getCurrentTime 等控制介面。
+ * 4. 與錄音/時間軸 60 FPS 精準同步：提供 play、pause、seekTo、時長自動同步與即時時鐘回調。
  */
 
 class YouTubeManager {
   constructor() {
     this.player = null;
     this.isReady = false;
+    this.isPlaying = false;
     this.currentVideoId = null;
     this.currentTitle = '';
-    this.onStateChangeCallback = null;
+    this.duration = 0;
     this.containerId = 'youtubePlayerContainer';
+    
+    // 事件回調
+    this.onStateChangeCallback = null;
+    this.onDurationChangeCallback = null;
+    this.onTimeUpdateCallback = null;
+
+    // 播放追蹤定時器
+    this.syncTimer = null;
+
     this.initApi();
   }
 
@@ -40,11 +50,53 @@ class YouTubeManager {
   }
 
   /**
+   * 檢查並更新影片真實時長
+   */
+  checkDuration() {
+    if (!this.player || typeof this.player.getDuration !== 'function') return;
+    const dur = this.player.getDuration();
+    if (dur && dur > 0 && Math.abs(dur - this.duration) > 0.5) {
+      this.duration = dur;
+      if (this.onDurationChangeCallback) {
+        this.onDurationChangeCallback(dur);
+      }
+    }
+  }
+
+  /**
+   * 啟動 60 FPS / 30 FPS 時間追蹤迴圈
+   */
+  startSyncTimer() {
+    this.stopSyncTimer();
+    this.isPlaying = true;
+    this.syncTimer = setInterval(() => {
+      this.checkDuration();
+      const cur = this.getCurrentTime();
+      if (this.onTimeUpdateCallback) {
+        this.onTimeUpdateCallback(cur, true, this.duration);
+      }
+    }, 40); // 25 FPS 精準同步
+  }
+
+  /**
+   * 停止追蹤迴圈
+   */
+  stopSyncTimer() {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer);
+      this.syncTimer = null;
+    }
+    this.isPlaying = false;
+  }
+
+  /**
    * 載入指定影片 ID
    */
   loadVideo(videoId, title = 'YouTube 伴奏') {
     this.currentVideoId = videoId;
     this.currentTitle = title;
+    this.duration = 0;
+    this.stopSyncTimer();
 
     if (!this.player) {
       this.player = new YT.Player(this.containerId, {
@@ -61,16 +113,31 @@ class YouTubeManager {
         events: {
           onReady: (event) => {
             console.log('YouTube Player 載入完成');
+            setTimeout(() => this.checkDuration(), 800);
           },
           onStateChange: (event) => {
+            const state = event.data;
+            // 1: PLAYING, 2: PAUSED, 0: ENDED, 3: BUFFERING, 5: CUED
+            if (state === 1) {
+              this.checkDuration();
+              this.startSyncTimer();
+            } else {
+              this.stopSyncTimer();
+              const cur = this.getCurrentTime();
+              if (this.onTimeUpdateCallback) {
+                this.onTimeUpdateCallback(cur, false, this.duration);
+              }
+            }
+
             if (this.onStateChangeCallback) {
-              this.onStateChangeCallback(event.data);
+              this.onStateChangeCallback(state);
             }
           }
         }
       });
     } else {
       this.player.cueVideoById(videoId);
+      setTimeout(() => this.checkDuration(), 800);
     }
   }
 
@@ -164,18 +231,24 @@ class YouTubeManager {
   play() {
     if (this.player && typeof this.player.playVideo === 'function') {
       this.player.playVideo();
+      this.startSyncTimer();
     }
   }
 
   pause() {
     if (this.player && typeof this.player.pauseVideo === 'function') {
       this.player.pauseVideo();
+      this.stopSyncTimer();
     }
   }
 
   seekTo(seconds) {
+    const s = Math.max(0, seconds);
     if (this.player && typeof this.player.seekTo === 'function') {
-      this.player.seekTo(Math.max(0, seconds), true);
+      this.player.seekTo(s, true);
+      if (this.onTimeUpdateCallback) {
+        this.onTimeUpdateCallback(s, this.isPlaying, this.duration);
+      }
     }
   }
 
@@ -188,9 +261,11 @@ class YouTubeManager {
 
   getDuration() {
     if (this.player && typeof this.player.getDuration === 'function') {
-      return this.player.getDuration() || 0;
+      const dur = this.player.getDuration() || 0;
+      if (dur > 0) this.duration = dur;
+      return this.duration;
     }
-    return 0;
+    return this.duration;
   }
 
   setVolume(vol0to1) {
