@@ -144,6 +144,17 @@
                 <input type="file" id="fileLrcInput" accept=".lrc,.txt" style="display: none;">
               </div>
             </div>
+            
+            <div class="lyrics-offset-bar" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--surface-subtle); border-radius: var(--radius-sm); border: 1px solid var(--border); flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 13.5px; font-weight: 600; color: var(--text-muted);">歌詞起點校準:</span>
+                  <button id="btnLyricsOffsetMinus" class="btn btn-sm" type="button" title="整段提早 0.5 秒">-0.5s</button>
+                  <span id="lblLyricsOffset" class="offset-badge" style="font-family: monospace; font-size: 13.5px; font-weight: 700; color: var(--accent); background: var(--surface); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">+0.0s</span>
+                  <button id="btnLyricsOffsetPlus" class="btn btn-sm" type="button" title="整段延後 0.5 秒">+0.5s</button>
+                  <button id="btnLyricsOffsetReset" class="btn btn-sm" type="button" title="重設為 0s">0s</button>
+                </div>
+                <button id="btnLyricsSetAnchor" class="btn btn-sm btn-primary" type="button" title="以目前播放指針時間設為當前句歌詞起點">📍 對齊當前句</button>
+            </div>
 
             <!-- 60 FPS 平滑視差捲動歌詞容器 -->
             <div id="lyricsBox" class="lyrics-box lyrics-box-tall">
@@ -161,11 +172,13 @@
               <svg class="icon" viewBox="0 0 24 24"><path d="M2 10s3-3 5-3 5 6 7 6 5-6 8-6"></path></svg>
               <span id="visualizerTitle">即時伴奏音訊軸與聲波流</span>
             </span>
-            <!-- 縮放控制項 (支援滑鼠滾輪 Zoom) -->
+            <!-- 縮放與平移控制項 (支援滑鼠滾輪 Zoom 與 Shift+滾輪平移) -->
             <div class="timeline-zoom-controls">
+              <button id="btnTimelinePanLeft" class="btn btn-sm" type="button" title="向左平移視窗 (亦可按 Shift+滾輪 或 右鍵拖曳)">◀</button>
               <button id="btnZoomOut" class="btn btn-sm" type="button" title="縮小時間軸 (可使用滑鼠滾輪)">-</button>
               <span id="lblZoomLevel" class="zoom-badge">1.0x</span>
               <button id="btnZoomIn" class="btn btn-sm" type="button" title="放大時間軸 (可使用滑鼠滾輪)">+</button>
+              <button id="btnTimelinePanRight" class="btn btn-sm" type="button" title="向右平移視窗 (亦可按 Shift+滾輪 或 右鍵拖曳)">▶</button>
               <button id="btnZoomReset" class="btn btn-sm" type="button" title="重置為 1:1">1:1</button>
             </div>
           </div>
@@ -195,14 +208,14 @@
             </div>
           </div>
 
-          <!-- 錄製主操作按鈕列 (支援接續錄製 Punch-in) -->
+          <!-- 錄製主操作按鈕列 (支援接續錄製 Punch-in，按空白鍵可快速切換) -->
           <div class="action-bar">
-            <button id="btnRecordStart" class="btn btn-record" type="button">
+            <button id="btnRecordStart" class="btn btn-record" type="button" title="快捷鍵: 空白鍵 Space">
               <svg class="icon" style="stroke: #ffffff;" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
               開始錄製 (伴奏 + 麥克風)
             </button>
 
-            <button id="btnRecordPause" class="btn btn-warning" type="button" style="display: none;">
+            <button id="btnRecordPause" class="btn btn-warning" type="button" style="display: none;" title="快捷鍵: 空白鍵 Space">
               <svg class="icon" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
               暫停錄製
             </button>
@@ -221,6 +234,18 @@
               <svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
               重新開始
             </button>
+          </div>
+
+          <!-- 錄製分段 (Takes) 簡易管理與單獨重錄面板 -->
+          <div id="vocalTakesContainer" class="vocal-takes-panel" style="display: none; margin-top: 10px;">
+            <div class="takes-panel-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 600; font-size: 15px; color: var(--text-primary);">錄製分段管理 (Takes)</span>
+                <span id="lblTakesCount" class="panel-tag">0 個片段</span>
+              </div>
+              <span style="font-size: 13.5px; color: var(--text-muted);">支援單獨重錄該段（自動限制起訖時長，絕不覆蓋別段）</span>
+            </div>
+            <div id="vocalTakesList" class="takes-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;"></div>
           </div>
         </div>
       </div>
