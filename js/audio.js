@@ -51,13 +51,27 @@ class AudioEngine {
     this.mixSyncLoopId = null;
     this.vocalTakeAudios = []; // [{ take, audio }]
     
-    // 混音參數
+    // 混音與即時監聽參數
     this.latencyOffsetMs = -40; // 延遲校準 (毫秒)
-    this.backingVolume = 0.8;
+    this.liveBackingVolume = 1.0; // 錄製即時伴奏音量 (0~1.5)
+    this.backingVolume = 1.0;     // 後製混音導出伴奏音量 (預設同錄製時的設定)
     this.vocalVolume = 1.0;
     this.backingMuted = false;
     this.vocalMuted = false;
     this.reverbEnabled = true;
+
+    // 即時耳返監聽 (Direct Monitoring) 參數
+    this.isMonitoringEnabled = false;
+    this.monitorVolume = 1.0;
+    this.micSourceNode = null;
+    this.monitorGainNode = null;
+
+    // 方案 2: Web Audio 即時消音/去除中置人聲 (Center Channel Cancellation / OOPS)
+    this.isVocalCancellationEnabled = false;
+    this.backingSourceNode = null;
+    this.backingGainNode = null;
+    this.directBackingGain = null;
+    this.vocalCancelBranchGain = null;
     
     // 即時音訊取樣緩衝區 (1024 點)
     this.bufferSize = 1024;
@@ -73,6 +87,121 @@ class AudioEngine {
       await this.audioCtx.resume();
     }
     return this.audioCtx;
+  }
+
+  /**
+   * 初始化伴奏 Web Audio 節點鏈 (包含立體聲去人聲 DSP 模組)
+   */
+  initBackingAudioNodes() {
+    if (this.backingSourceNode || !this.audioCtx || !this.backingAudio) return;
+
+    try {
+      this.backingSourceNode = this.audioCtx.createMediaElementSource(this.backingAudio);
+
+      // 總輸出增益 (依據即時伴奏音量)
+      this.backingGainNode = this.audioCtx.createGain();
+      this.backingGainNode.gain.value = this.liveBackingVolume;
+
+      // 1. 直通分支 (未開啟消音時使用)
+      this.directBackingGain = this.audioCtx.createGain();
+      this.directBackingGain.gain.value = this.isVocalCancellationEnabled ? 0.0 : 1.0;
+
+      // 2. 去人聲處理分支 (OOPS 聲道差分網絡)
+      this.vocalCancelBranchGain = this.audioCtx.createGain();
+      this.vocalCancelBranchGain.gain.value = this.isVocalCancellationEnabled ? 1.0 : 0.0;
+
+      // 分離左右聲道
+      const splitter = this.audioCtx.createChannelSplitter(2);
+
+      // 低頻保留濾波器 (保留 140Hz 以下大鼓與貝斯，避免聲音單薄)
+      const lpFilterL = this.audioCtx.createBiquadFilter();
+      lpFilterL.type = 'lowpass';
+      lpFilterL.frequency.value = 140;
+
+      const lpFilterR = this.audioCtx.createBiquadFilter();
+      lpFilterR.type = 'lowpass';
+      lpFilterR.frequency.value = 140;
+
+      // 中高頻差分濾波器 (人聲主要分佈頻段 140Hz ~ 6kHz)
+      const hpFilterL = this.audioCtx.createBiquadFilter();
+      hpFilterL.type = 'highpass';
+      hpFilterL.frequency.value = 140;
+
+      const hpFilterR = this.audioCtx.createBiquadFilter();
+      hpFilterR.type = 'highpass';
+      hpFilterR.frequency.value = 140;
+
+      // 反相器：Right 聲道乘上 -1 (使得 L + (-R) = L - R，抵消正中央人聲)
+      const inverterR = this.audioCtx.createGain();
+      inverterR.gain.value = -1;
+
+      // 差分疊加
+      const diffSum = this.audioCtx.createGain();
+      diffSum.gain.value = 0.8;
+      hpFilterL.connect(diffSum);
+      hpFilterR.connect(inverterR);
+      inverterR.connect(diffSum);
+
+      // 低頻大鼓/貝斯還原 (單聲道合成，加強厚度)
+      splitter.connect(lpFilterL, 0);
+      splitter.connect(lpFilterR, 1);
+      const bassSum = this.audioCtx.createGain();
+      bassSum.gain.value = 0.55;
+      lpFilterL.connect(bassSum);
+      lpFilterR.connect(bassSum);
+
+      // 合成至雙聲道輸出
+      const merger = this.audioCtx.createChannelMerger(2);
+
+      // 左聲道: (L - R) + Bass
+      diffSum.connect(merger, 0, 0);
+      bassSum.connect(merger, 0, 0);
+
+      // 右聲道: -(L - R) + Bass
+      const diffInv = this.audioCtx.createGain();
+      diffInv.gain.value = -1;
+      diffSum.connect(diffInv);
+      diffInv.connect(merger, 0, 1);
+      bassSum.connect(merger, 0, 1);
+
+      // 串接路由
+      this.vocalCancelBranchGain.connect(splitter);
+      splitter.connect(hpFilterL, 0);
+      splitter.connect(hpFilterR, 1);
+
+      this.backingSourceNode.connect(this.directBackingGain);
+      this.backingSourceNode.connect(this.vocalCancelBranchGain);
+
+      this.directBackingGain.connect(this.backingGainNode);
+      merger.connect(this.backingGainNode);
+
+      this.backingGainNode.connect(this.audioCtx.destination);
+    } catch (e) {
+      console.warn('MediaElementSource initialization:', e);
+    }
+  }
+
+  /**
+   * 開啟或關閉即時去人聲 (方案 2: OOPS)
+   */
+  setVocalCancellation(enabled) {
+    this.isVocalCancellationEnabled = !!enabled;
+    this.initBackingAudioNodes();
+
+    if (this.directBackingGain && this.vocalCancelBranchGain) {
+      if (this.isVocalCancellationEnabled) {
+        this.directBackingGain.gain.value = 0.0;
+        this.vocalCancelBranchGain.gain.value = 1.0;
+      } else {
+        this.directBackingGain.gain.value = 1.0;
+        this.vocalCancelBranchGain.gain.value = 0.0;
+      }
+    }
+    return this.isVocalCancellationEnabled;
+  }
+
+  toggleVocalCancellation() {
+    return this.setVocalCancellation(!this.isVocalCancellationEnabled);
   }
 
   async initMicrophone() {
@@ -94,9 +223,55 @@ class AudioEngine {
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = this.bufferSize;
       source.connect(this.analyser);
+
+      // 建立耳機即時耳返通道 (Direct Monitoring)
+      this.micSourceNode = source;
+      if (!this.monitorGainNode) {
+        this.monitorGainNode = this.audioCtx.createGain();
+      }
+      this.monitorGainNode.gain.value = this.isMonitoringEnabled ? this.monitorVolume : 0;
+      this.micSourceNode.connect(this.monitorGainNode);
+      this.monitorGainNode.connect(this.audioCtx.destination);
     } catch (err) {
       console.error('麥克風存取失敗:', err);
       throw new Error('無法存取麥克風，請檢查瀏覽器麥克風權限並使用耳機。');
+    }
+  }
+
+  /**
+   * 設定即時伴奏音量 (錄製/試聽隨時生效，並自動同步為導出混音預設值)
+   */
+  setLiveBackingVolume(vol) {
+    this.liveBackingVolume = Math.max(0, Math.min(1.5, vol));
+    this.backingVolume = this.liveBackingVolume; // 同步做為後製混音與導出的預設音量
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.setVolume(this.liveBackingVolume * 100);
+    } else {
+      if (this.backingGainNode) {
+        this.backingGainNode.gain.value = this.liveBackingVolume;
+      } else if (this.backingAudio) {
+        this.backingAudio.volume = Math.max(0, Math.min(1.0, this.liveBackingVolume));
+      }
+    }
+  }
+
+  /**
+   * 開啟或關閉即時耳返 (Direct Monitoring)
+   */
+  setDirectMonitoring(enabled) {
+    this.isMonitoringEnabled = !!enabled;
+    if (this.monitorGainNode) {
+      this.monitorGainNode.gain.value = this.isMonitoringEnabled ? this.monitorVolume : 0;
+    }
+  }
+
+  /**
+   * 調節即時耳返人聲音量
+   */
+  setMonitorVolume(vol) {
+    this.monitorVolume = Math.max(0, Math.min(1.5, vol));
+    if (this.monitorGainNode && this.isMonitoringEnabled) {
+      this.monitorGainNode.gain.value = this.monitorVolume;
     }
   }
 
@@ -285,6 +460,9 @@ class AudioEngine {
   // 伴奏獨立試聽播放器 (時間軸連動)
   // ==========================================================================
   playBackingOnly(startAtSec = 0) {
+    this.ensureAudioContext();
+    this.initBackingAudioNodes();
+    this.setLiveBackingVolume(this.liveBackingVolume);
     if (this.sourceMode === 'youtube' && window.youtubeManager) {
       window.youtubeManager.seekTo(startAtSec);
       window.youtubeManager.play();
@@ -365,6 +543,8 @@ class AudioEngine {
     };
 
     // 啟動伴奏同步播放
+    this.initBackingAudioNodes();
+    this.setLiveBackingVolume(this.liveBackingVolume);
     if (this.sourceMode === 'youtube' && window.youtubeManager) {
       window.youtubeManager.seekTo(this.currentTakeStartTime);
       window.youtubeManager.play();
