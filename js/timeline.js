@@ -19,6 +19,7 @@ class AudioTimeline {
     this.onSeek = options.onSeek || (() => {});
     this.onZoomChange = options.onZoomChange || (() => {});
     this.onTakeSelect = options.onTakeSelect || (() => {});
+    this.onContextMenu = options.onContextMenu || null;
 
     // 時間與時長 (秒)
     this.duration = options.duration || 60;
@@ -96,8 +97,8 @@ class AudioTimeline {
 
     // 2. 滑鼠點擊與拖動
     this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 2 || e.button === 1 || e.altKey) {
-        // 右鍵、中鍵或 Alt 鍵：平移時間軸視窗 (Pan)
+      if (e.button === 1 || e.altKey) {
+        // 中鍵或 Alt 鍵：平移時間軸視窗 (Pan)
         this.isPanning = true;
         this.panStartX = e.clientX;
         this.panStartViewTime = this.viewStartTime;
@@ -107,6 +108,29 @@ class AudioTimeline {
         this.isDragging = true;
         this.canvas.style.cursor = 'crosshair';
         this.handlePointerTime(e);
+      }
+    });
+
+    // 3. 右鍵選單 (Context Menu)
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const rect = this.canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const targetTime = this.xToTime(mouseX);
+
+      // 檢查是否點擊在特定 Take 片段上
+      let hitTake = null;
+      if (this.vocalTakes && this.vocalTakes.length > 0) {
+        for (const t of this.vocalTakes) {
+          if (targetTime >= t.startTime && targetTime <= (t.startTime + t.duration)) {
+            hitTake = t;
+            break;
+          }
+        }
+      }
+
+      if (this.onContextMenu) {
+        this.onContextMenu(e, { time: targetTime, take: hitTake });
       }
     });
 

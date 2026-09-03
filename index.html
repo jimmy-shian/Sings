@@ -2,16 +2,20 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>SingStudio - 專業雙軌音訊工作站</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="shortcut icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
   <link rel="stylesheet" href="css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="js/version.js"></script>
 </head>
 <body>
 
-  <!-- 頂部 OpenDesign 高對比導航列 -->
+  <!-- 頂部 OpenDesign 高對比導航列 (簡約清爽，移除多餘技術狀態標籤) -->
   <header class="top-nav">
     <div class="nav-left">
       <div class="logo">
@@ -21,20 +25,12 @@
         </svg>
         <span class="logo-text">SingStudio</span>
         <span class="badge-tag">DAW PRO</span>
+        <span class="badge-tag" id="appVersionBadge">v0.0.2</span>
       </div>
     </div>
 
     <div class="nav-right">
-      <div class="config-summary">
-        <div class="config-item" title="點擊複製儲存配額狀態">
-          <span class="config-key" id="storageQuotaBadge">儲存保護: 計算中...</span>
-          <span class="copy-hint">複製</span>
-        </div>
-        <div class="config-item" title="點擊複製音訊引擎狀態">
-          <span class="config-key" id="audioStatusBadge">音訊核心就緒</span>
-          <span class="copy-hint">複製</span>
-        </div>
-      </div>
+      <span class="nav-hint">專業雙軌卡拉OK錄音系統</span>
     </div>
   </header>
 
@@ -103,8 +99,17 @@
             <!-- 面板 1-B: YouTube 直連搜尋 -->
             <div id="paneYouTube" class="source-pane active">
               <div class="search-bar">
-                <input type="text" id="ytSearchInput" class="input-text" placeholder="輸入歌曲關鍵字或貼上 YouTube 網址 (如: 晴天 伴奏)...">
+                <input type="text" id="ytSearchInput" class="input-text" placeholder="輸入歌曲關鍵字或貼上 YouTube 網址 (如: 晴天)...">
                 <button id="btnYtSearch" class="btn btn-primary" type="button">搜尋 / 載入</button>
+              </div>
+
+              <!-- 方案 1: 伴奏/Karaoke 優先推薦開關 (預設開啟，可切換) -->
+              <div class="yt-search-options">
+                <label class="karaoke-toggle-lbl" title="預設優先檢索原曲純伴奏、Karaoke、Instrumental 版本，去除主唱原聲">
+                  <input type="checkbox" id="chkKaraokeMode" checked>
+                  <span class="karaoke-badge">🎤 伴奏/Karaoke 優先推薦</span>
+                </label>
+                <span class="yt-opt-hint">自動過濾原曲人聲，優先取得高品質伴奏帶</span>
               </div>
 
               <div id="ytPlayerBox" class="yt-player-box">
@@ -205,6 +210,42 @@
 
             <div class="metric-group">
               <span id="lblTrackStatus" class="panel-tag">[待機中]</span>
+            </div>
+          </div>
+
+          <!-- 即時伴奏音量調節、人聲消除與耳機耳返監聽列 (錄製時隨時可調，預設為匯出音量) -->
+          <div class="live-audio-toolbar">
+            <div class="live-tool-item">
+              <span class="live-tool-lbl">
+                <svg class="icon" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                伴奏音量:
+              </span>
+              <input type="range" id="sliderLiveBackingVol" class="range-input-sm" min="0" max="150" value="100" title="即時伴奏音量 (0~150%)">
+              <span id="lblLiveBackingVol" class="vol-badge">100%</span>
+            </div>
+
+            <div class="live-tool-divider"></div>
+
+            <!-- 方案 2: Web Audio 即時消除人聲 (立體聲差分技術) -->
+            <div class="live-tool-item">
+              <button id="btnToggleVocalCancel" class="btn btn-sm btn-outline" type="button" title="利用立體聲相位差分技術即時消除歌曲中央主唱 (適用於本地音訊/示範)">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line><line x1="3" y1="3" x2="21" y2="21" stroke="var(--danger)" stroke-width="2.5"></line></svg>
+                <span id="lblVocalCancel">🎙️ 消除人聲: 關</span>
+              </button>
+            </div>
+
+            <div class="live-tool-divider"></div>
+
+            <div class="live-tool-item">
+              <button id="btnToggleMonitor" class="btn btn-sm btn-outline" type="button" title="耳機即時監聽自己的歌聲 (請務必戴耳機避免嘯叫)">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+                <span id="lblMonitorStatus">🎧 即時耳返: 關</span>
+              </button>
+              <div id="boxMonitorVol" style="display: none; align-items: center; gap: 6px;">
+                <span class="live-tool-lbl" style="font-size: 13px;">耳返:</span>
+                <input type="range" id="sliderLiveMonitorVol" class="range-input-sm" min="0" max="150" value="100" title="即時耳返人聲音量 (0~150%)">
+                <span id="lblLiveMonitorVol" class="vol-badge">100%</span>
+              </div>
             </div>
           </div>
 
@@ -401,6 +442,49 @@
       <div id="lrcResultsList" class="yt-results-list">
         <!-- 搜尋結果 -->
       </div>
+    </div>
+  </div>
+
+  <!-- 即時伴奏音訊軸右鍵功能選單 (Context Menu) -->
+  <div id="timelineContextMenu" class="timeline-context-menu" style="display: none;">
+    <div id="ctxMenuHeader" class="context-menu-header">00:00 · 時間軸選項</div>
+    <div class="context-menu-item" id="ctxPlayFromHere">
+      <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      <span>從此處播放伴奏</span>
+    </div>
+    <div class="context-menu-item" id="ctxPunchInHere">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+      <span>從此處接續錄製 (Punch-in)</span>
+    </div>
+    <div class="context-menu-item" id="ctxAlignLyric">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h12"></path></svg>
+      <span>📍 對齊歌詞至此時間</span>
+    </div>
+    <div class="context-menu-divider" id="ctxTakeDivider" style="display: none;"></div>
+    <div class="context-menu-item" id="ctxPlayTake" style="display: none;">
+      <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      <span id="lblCtxPlayTake">試聽片段</span>
+    </div>
+    <div class="context-menu-item" id="ctxReRecordTake" style="display: none; color: var(--warning);">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+      <span id="lblCtxReRecordTake">僅重錄此段 (自動限時)</span>
+    </div>
+    <div class="context-menu-item" id="ctxDeleteTake" style="display: none; color: var(--danger);">
+      <svg class="icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      <span id="lblCtxDeleteTake">刪除此片段</span>
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="ctxZoomIn">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+      <span>放大視窗 (Zoom In)</span>
+    </div>
+    <div class="context-menu-item" id="ctxZoomOut">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+      <span>縮小視窗 (Zoom Out)</span>
+    </div>
+    <div class="context-menu-item" id="ctxZoomReset">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+      <span>重設縮放 (1:1)</span>
     </div>
   </div>
 

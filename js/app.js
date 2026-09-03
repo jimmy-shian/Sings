@@ -6,9 +6,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   // 1. 快取所有 DOM 元素
   const el = {
-    // 頂部狀態
-    storageQuota: document.getElementById('storageQuotaBadge'),
-    audioStatus: document.getElementById('audioStatusBadge'),
+    // 頂部導航與音軌摘要
     currentTrackTitle: document.getElementById('currentTrackTitle'),
     currentTrackMeta: document.getElementById('currentTrackMeta'),
     sourceModeBadge: document.getElementById('sourceModeBadge'),
@@ -82,6 +80,20 @@ document.addEventListener('DOMContentLoaded', () => {
     lblInputDb: document.getElementById('lblInputDb'),
     lblTrackStatus: document.getElementById('lblTrackStatus'),
 
+    // YouTube 伴奏優先推薦開關 (方案 1)
+    chkKaraokeMode: document.getElementById('chkKaraokeMode'),
+
+    // 即時伴奏音量調節、去人聲與耳返監聽
+    sliderLiveBackingVol: document.getElementById('sliderLiveBackingVol'),
+    lblLiveBackingVol: document.getElementById('lblLiveBackingVol'),
+    btnToggleVocalCancel: document.getElementById('btnToggleVocalCancel'),
+    lblVocalCancel: document.getElementById('lblVocalCancel'),
+    btnToggleMonitor: document.getElementById('btnToggleMonitor'),
+    lblMonitorStatus: document.getElementById('lblMonitorStatus'),
+    boxMonitorVol: document.getElementById('boxMonitorVol'),
+    sliderLiveMonitorVol: document.getElementById('sliderLiveMonitorVol'),
+    lblLiveMonitorVol: document.getElementById('lblLiveMonitorVol'),
+
     // 錄音操作按鈕 (支援接續錄製)
     btnRecordStart: document.getElementById('btnRecordStart'),
     btnRecordPause: document.getElementById('btnRecordPause'),
@@ -124,7 +136,24 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCloseLrcModal: document.getElementById('btnCloseLrcModal'),
     lrcSearchQuery: document.getElementById('lrcSearchQuery'),
     btnDoLrcSearch: document.getElementById('btnDoLrcSearch'),
-    lrcResultsList: document.getElementById('lrcResultsList')
+    lrcResultsList: document.getElementById('lrcResultsList'),
+
+    // 時間軸右鍵選單 (Context Menu)
+    timelineContextMenu: document.getElementById('timelineContextMenu'),
+    ctxMenuHeader: document.getElementById('ctxMenuHeader'),
+    ctxPlayFromHere: document.getElementById('ctxPlayFromHere'),
+    ctxPunchInHere: document.getElementById('ctxPunchInHere'),
+    ctxAlignLyric: document.getElementById('ctxAlignLyric'),
+    ctxTakeDivider: document.getElementById('ctxTakeDivider'),
+    ctxPlayTake: document.getElementById('ctxPlayTake'),
+    lblCtxPlayTake: document.getElementById('lblCtxPlayTake'),
+    ctxReRecordTake: document.getElementById('ctxReRecordTake'),
+    lblCtxReRecordTake: document.getElementById('lblCtxReRecordTake'),
+    ctxDeleteTake: document.getElementById('ctxDeleteTake'),
+    lblCtxDeleteTake: document.getElementById('lblCtxDeleteTake'),
+    ctxZoomIn: document.getElementById('ctxZoomIn'),
+    ctxZoomOut: document.getElementById('ctxZoomOut'),
+    ctxZoomReset: document.getElementById('ctxZoomReset')
   };
 
   let recordLoopId = null;
@@ -146,6 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     onZoomChange: (zoom) => {
       el.lblZoomLevel.textContent = `${zoom.toFixed(1)}x`;
+    },
+    onContextMenu: (e, info) => {
+      showTimelineContextMenu(e, info);
     }
   });
 
@@ -166,11 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 初始化歌詞引擎
   lyricsEngine.init(el.lyricsBox);
-
-  // 異步讀取儲存配額
-  safeStorage.getStorageQuota().then(quota => {
-    el.storageQuota.textContent = `儲存保護: ${quota.usageMB} MB / ${quota.quotaMB} MB`;
-  });
   refreshLibraryTable();
 
   // ==========================================================================
@@ -286,7 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
       el.currentTrackTitle.textContent = file.name;
       el.currentTrackMeta.textContent = `[本機音訊] ${Utils.formatBytes(file.size)} · ${Utils.formatDuration(dur)}`;
       el.ytPlayerBox.style.display = 'none';
-      el.audioStatus.textContent = '伴奏就緒';
 
       // 啟用伴奏專屬播放控制
       el.localTrackPlayerBox.style.display = 'block';
@@ -304,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // 清空舊示範歌詞，引導搜尋
       lyricsEngine.clearLyrics(`已載入【${file.name}】。點擊上方「搜尋同步歌詞」或匯入 .lrc。`);
     } catch (err) {
-      alert('檔案載入失敗: ' + err.message);
+      UI.alert('檔案載入失敗: ' + err.message, '載入失敗');
       el.currentTrackTitle.textContent = '載入失敗';
     }
   }
@@ -391,7 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
       el.currentTrackTitle.textContent = '卡農之歌 (內建高音質和弦示範)';
       el.currentTrackMeta.textContent = '[內建音訊] 56秒 卡農和弦進行';
       el.ytPlayerBox.style.display = 'none';
-      el.audioStatus.textContent = '示範就緒';
       audioEngine.sourceMode = 'demo';
       el.btnLoadDemo.textContent = '載入示範伴奏';
 
@@ -400,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mainTimeline.updatePlayhead(0, false);
       updateRecordTimeDisplay(0);
     } catch (err) {
-      alert('合成失敗: ' + err.message);
+      UI.alert('合成失敗: ' + err.message, '合成失敗');
       el.btnLoadDemo.textContent = '載入示範伴奏';
     }
   });
@@ -409,13 +434,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // YouTube 直連搜尋
   // ==========================================================================
   async function performYouTubeSearch() {
-    const query = el.ytSearchInput.value.trim();
-    if (!query) return;
+    const rawQuery = el.ytSearchInput.value.trim();
+    if (!rawQuery) return;
 
-    const directId = youtubeManager.extractVideoId(query);
+    const directId = youtubeManager.extractVideoId(rawQuery);
     if (directId) {
       selectYouTubeVideo(directId, `YouTube 影片 (${directId})`);
       return;
+    }
+
+    // 方案 1: 伴奏優先 (Karaoke Mode) 智慧過濾 (預設開啟，可切換)
+    const isKaraokeMode = el.chkKaraokeMode ? el.chkKaraokeMode.checked : true;
+    let query = rawQuery;
+    if (isKaraokeMode) {
+      const lower = rawQuery.toLowerCase();
+      const hasKey = lower.includes('伴奏') || lower.includes('karaoke') || lower.includes('instrumental') || lower.includes('off vocal') || lower.includes('純音樂');
+      if (!hasKey) {
+        query = `${rawQuery} 伴奏`;
+        UI.toast(`已啟用伴奏優先推薦搜尋:【${query}】`, 'info', 2200);
+      }
     }
 
     el.ytResults.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">搜尋中...</div>';
@@ -432,9 +469,12 @@ document.addEventListener('DOMContentLoaded', () => {
       results.forEach(item => {
         const div = document.createElement('div');
         div.className = 'yt-result-item';
+        const isBacking = item.title.includes('伴奏') || item.title.toLowerCase().includes('karaoke') || item.title.toLowerCase().includes('instrumental');
+        const backingBadge = isBacking ? '<span class="karaoke-badge" style="font-size:11px;margin-left:6px;padding:1px 5px;">純伴奏</span>' : '';
+
         div.innerHTML = `
           <div>
-            <div class="yt-item-title">${Utils.escapeHtml(item.title)}</div>
+            <div class="yt-item-title">${Utils.escapeHtml(item.title)}${backingBadge}</div>
             <div class="yt-item-sub">${Utils.escapeHtml(item.channel)} · ${item.duration}</div>
           </div>
           <button class="btn btn-sm btn-primary">選擇</button>
@@ -462,7 +502,6 @@ document.addEventListener('DOMContentLoaded', () => {
     el.ytPlayerBox.style.display = 'block';
     el.currentTrackTitle.textContent = title;
     el.currentTrackMeta.textContent = `[YouTube 直連] ID: ${videoId}`;
-    el.audioStatus.textContent = 'YouTube 就緒';
 
     // 顯示伴奏控制列，供使用者在 YouTube 模式下亦可使用播放/跳轉滑桿
     el.localTrackPlayerBox.style.display = 'block';
@@ -643,7 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       startLiveRecordLoop();
     } catch (err) {
-      alert(err.message || '麥克風啟動失敗');
+      UI.alert(err.message || '麥克風啟動失敗，請確認已授予麥克風權限', '麥克風異常');
     }
   });
 
@@ -683,13 +722,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       startLiveRecordLoop();
     } catch (err) {
-      alert(err.message || '接續錄音失敗');
+      UI.alert(err.message || '接續錄音失敗', '錄音異常');
     }
   });
 
   // 重新開始錄音
-  el.btnRecordReset.addEventListener('click', () => {
-    if (confirm('確定放棄目前的錄製片段並重新開始嗎？')) {
+  el.btnRecordReset.addEventListener('click', async () => {
+    if (await UI.confirm('確定放棄目前的錄製片段並重新開始嗎？', '放棄錄製')) {
       audioEngine.resetRecording();
       mainTimeline.clearLiveVocalWave();
       mainTimeline.setVocalTakes([]);
@@ -704,8 +743,77 @@ document.addEventListener('DOMContentLoaded', () => {
       el.btnRecordReset.style.display = 'none';
       el.lblTrackStatus.textContent = '[待機中]';
       el.lblTrackStatus.style.color = '';
+      UI.toast('已重置錄音工作區', 'info');
     }
   });
+
+  // ==========================================================================
+  // 即時伴奏音量調節與耳機耳返監聽 (Direct Monitoring)
+  // ==========================================================================
+  if (el.sliderLiveBackingVol) {
+    el.sliderLiveBackingVol.addEventListener('input', (e) => {
+      const vol = parseFloat(e.target.value) / 100;
+      audioEngine.setLiveBackingVolume(vol);
+      el.lblLiveBackingVol.textContent = `${Math.round(vol * 100)}%`;
+    });
+  }
+
+  // 方案 2: Web Audio 即時消除人聲 (立體聲差分)
+  if (el.btnToggleVocalCancel) {
+    el.btnToggleVocalCancel.addEventListener('click', () => {
+      const isCancel = audioEngine.toggleVocalCancellation();
+      if (isCancel) {
+        el.lblVocalCancel.textContent = '🎙️ 消除人聲: 開';
+        el.btnToggleVocalCancel.classList.add('active');
+        UI.toast('已開啟即時去人聲 (中央人聲差分消除模式)', 'success');
+      } else {
+        el.lblVocalCancel.textContent = '🎙️ 消除人聲: 關';
+        el.btnToggleVocalCancel.classList.remove('active');
+        UI.toast('已關閉即時去人聲 (還原原聲伴奏)', 'info');
+      }
+    });
+  }
+
+  if (el.btnToggleMonitor) {
+    el.btnToggleMonitor.addEventListener('click', async () => {
+      try {
+        await audioEngine.initMicrophone();
+      } catch (err) {
+        UI.alert(err.message, '麥克風存取受限');
+        return;
+      }
+
+      const next = !audioEngine.isMonitoringEnabled;
+      if (next) {
+        UI.toast('即時耳返已開啟，請務必配戴耳機，避免喇叭造成聲音回授(嘯叫)！', 'warning', 3500);
+      } else {
+        UI.toast('已關閉即時耳返', 'info');
+      }
+      audioEngine.setDirectMonitoring(next);
+      updateMonitorUI(next);
+    });
+  }
+
+  function updateMonitorUI(enabled) {
+    if (!el.lblMonitorStatus || !el.btnToggleMonitor) return;
+    if (enabled) {
+      el.lblMonitorStatus.textContent = '🎧 即時耳返: 開';
+      el.btnToggleMonitor.classList.add('active');
+      if (el.boxMonitorVol) el.boxMonitorVol.style.display = 'flex';
+    } else {
+      el.lblMonitorStatus.textContent = '🎧 即時耳返: 關';
+      el.btnToggleMonitor.classList.remove('active');
+      if (el.boxMonitorVol) el.boxMonitorVol.style.display = 'none';
+    }
+  }
+
+  if (el.sliderLiveMonitorVol) {
+    el.sliderLiveMonitorVol.addEventListener('input', (e) => {
+      const vol = parseFloat(e.target.value) / 100;
+      audioEngine.setMonitorVolume(vol);
+      el.lblLiveMonitorVol.textContent = `${Math.round(vol * 100)}%`;
+    });
+  }
 
   // 完成演唱：開啟獨立後製混音視窗 (完全獨立視窗)
   el.btnRecordFinish.addEventListener('click', async () => {
@@ -731,6 +839,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function openReviewModal(result) {
     const totalDur = audioEngine.getReviewDuration();
+
+    // 優先依照錄製時設定的伴奏音量作為後製混音與導出的預設值
+    const defaultBackingPct = Math.round(audioEngine.liveBackingVolume * 100);
+    el.sliderBacking.value = defaultBackingPct;
+    el.valBacking.textContent = `${defaultBackingPct}%`;
+    audioEngine.backingVolume = audioEngine.liveBackingVolume;
 
     // 載入至後製專屬時間軸
     reviewTimeline.setDuration(totalDur);
@@ -888,12 +1002,10 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         await safeStorage.saveRecording(fullMeta);
-        alert('作品已安全寫入本地 IndexedDB 作品庫。');
+        UI.toast('作品已安全寫入本地 IndexedDB 作品庫！', 'success');
         await refreshLibraryTable();
-        const quota = await safeStorage.getStorageQuota();
-        el.storageQuota.textContent = `儲存保護: ${quota.usageMB} MB / ${quota.quotaMB} MB`;
       } catch (err) {
-        alert('儲存失敗: ' + err.message);
+        UI.alert('儲存失敗: ' + err.message, '儲存失敗');
       }
     }
   });
@@ -906,8 +1018,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const trackTitle = el.currentTrackTitle.textContent.replace(/\[.*?\]/g, '').trim() || 'SingStudio';
       Utils.downloadBlob(blob, `${trackTitle}_Mixed_Master.wav`);
       el.btnExportWav.textContent = '匯出立體聲混音 WAV';
+      UI.toast('混音母帶已成功生成並開始下載', 'success');
     } catch (err) {
-      alert('混音匯出失敗: ' + err.message);
+      UI.alert('混音匯出失敗: ' + err.message, '匯出失敗');
       el.btnExportWav.textContent = '匯出立體聲混音 WAV';
     }
   });
@@ -927,13 +1040,13 @@ document.addEventListener('DOMContentLoaded', () => {
     list.forEach(item => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="table-title">${Utils.escapeHtml(item.title)}</td>
-        <td>${Utils.formatDuration(item.duration)}</td>
-        <td>${item.takesCount || 1} 段</td>
-        <td>${item.sizeFormatted}</td>
-        <td>${item.dateString}</td>
-        <td>${item.latencyOffset} ms</td>
-        <td>
+        <td class="table-title" data-label="作品名稱">${Utils.escapeHtml(item.title)}</td>
+        <td data-label="時長">${Utils.formatDuration(item.duration)}</td>
+        <td data-label="片段數">${item.takesCount || 1} 段</td>
+        <td data-label="檔案大小">${item.sizeFormatted}</td>
+        <td data-label="錄製時間">${item.dateString}</td>
+        <td data-label="延遲補償">${item.latencyOffset} ms</td>
+        <td data-label="操作">
           <div style="display:flex;gap:6px;">
             <button class="btn btn-sm btn-primary btn-play-lib" data-id="${item.id}">試聽後製</button>
             <button class="btn btn-sm btn-del-lib" data-id="${item.id}" style="color:var(--danger);">刪除</button>
@@ -967,11 +1080,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       tr.querySelector('.btn-del-lib').addEventListener('click', async () => {
-        if (confirm(`確定刪除【${item.title}】並釋放空間嗎？`)) {
+        if (await UI.confirm(`確定刪除【${item.title}】並釋放空間嗎？`, '刪除作品')) {
           await safeStorage.deleteRecording(item.id);
           await refreshLibraryTable();
-          const quota = await safeStorage.getStorageQuota();
-          el.storageQuota.textContent = `儲存保護: ${quota.usageMB} MB / ${quota.quotaMB} MB`;
+          UI.toast('已成功刪除作品', 'info');
         }
       });
 
@@ -1017,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       row.querySelector('.btn-rerecord-take').addEventListener('click', async () => {
         if (audioEngine.isRecording) return;
-        if (confirm(`確定要重錄【${take.id}】嗎？系統將從 ${startFmt} 開始，並在錄滿 ${take.duration.toFixed(1)} 秒後自動停止，絕不覆蓋別段。`)) {
+        if (await UI.confirm(`確定要重錄【${take.id}】嗎？系統將從 ${startFmt} 開始，並在錄滿 ${take.duration.toFixed(1)} 秒後自動停止，絕不覆蓋別段。`, '僅重錄此段')) {
           mainTimeline.currentTime = take.startTime;
           mainTimeline.updatePlayhead(take.startTime, false);
           await audioEngine.reRecordTake(take.id);
@@ -1036,12 +1148,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      row.querySelector('.btn-del-take').addEventListener('click', () => {
-        if (confirm(`確定刪除【${take.id}】嗎？`)) {
+      row.querySelector('.btn-del-take').addEventListener('click', async () => {
+        if (await UI.confirm(`確定刪除【${take.id}】嗎？`, '刪除片段')) {
           audioEngine.deleteTake(take.id);
           mainTimeline.setVocalTakes(audioEngine.vocalTakes);
           reviewTimeline.setVocalTakes(audioEngine.vocalTakes);
           renderVocalTakesList();
+          UI.toast(`已刪除 ${take.id}`, 'info');
         }
       });
 
@@ -1139,12 +1252,163 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 1-Click 複製互動卡片綁定
+  // ==========================================================================
+  // 時間軸專屬右鍵選單 (Context Menu) 互動邏輯
+  // ==========================================================================
+  let activeContextTarget = null; // { time, take }
+
+  function showTimelineContextMenu(e, info) {
+    activeContextTarget = info;
+    const menu = el.timelineContextMenu;
+    if (!menu) return;
+
+    el.ctxMenuHeader.textContent = `${Utils.formatDuration(info.time)} · 時間軸選項`;
+
+    if (info.take) {
+      el.ctxTakeDivider.style.display = 'block';
+      el.ctxPlayTake.style.display = 'flex';
+      el.ctxReRecordTake.style.display = 'flex';
+      el.ctxDeleteTake.style.display = 'flex';
+      el.lblCtxPlayTake.textContent = `▶ 試聽 ${info.take.id} (${info.take.duration.toFixed(1)}s)`;
+      el.lblCtxReRecordTake.textContent = `↻ 僅重錄 ${info.take.id} (自動限時)`;
+      el.lblCtxDeleteTake.textContent = `× 刪除 ${info.take.id}`;
+    } else {
+      el.ctxTakeDivider.style.display = 'none';
+      el.ctxPlayTake.style.display = 'none';
+      el.ctxReRecordTake.style.display = 'none';
+      el.ctxDeleteTake.style.display = 'none';
+    }
+
+    menu.style.display = 'block';
+    const menuW = 230;
+    const menuH = info.take ? 320 : 210;
+    const posX = Math.min(e.clientX, window.innerWidth - menuW - 12);
+    const posY = Math.min(e.clientY, window.innerHeight - menuH - 12);
+
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+  }
+
+  function hideTimelineContextMenu() {
+    if (el.timelineContextMenu) {
+      el.timelineContextMenu.style.display = 'none';
+    }
+  }
+
+  window.addEventListener('click', (e) => {
+    if (el.timelineContextMenu && !el.timelineContextMenu.contains(e.target)) {
+      hideTimelineContextMenu();
+    }
+  });
+  window.addEventListener('blur', hideTimelineContextMenu);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideTimelineContextMenu();
+  });
+
+  if (el.ctxPlayFromHere) {
+    el.ctxPlayFromHere.addEventListener('click', () => {
+      hideTimelineContextMenu();
+      if (!activeContextTarget) return;
+      const t = activeContextTarget.time;
+      if (audioEngine.sourceMode === 'youtube' && window.youtubeManager) {
+        window.youtubeManager.seekTo(t);
+        window.youtubeManager.play();
+        updateBackingSoloBtn(true);
+      } else {
+        audioEngine.seekBackingOnly(t);
+        if (!audioEngine.isBackingSoloPlaying) el.btnPlayBackingOnly.click();
+      }
+      mainTimeline.updatePlayhead(t, true);
+    });
+  }
+
+  if (el.ctxPunchInHere) {
+    el.ctxPunchInHere.addEventListener('click', async () => {
+      hideTimelineContextMenu();
+      if (!activeContextTarget) return;
+      const t = activeContextTarget.time;
+      mainTimeline.currentTime = t;
+      mainTimeline.updatePlayhead(t, false);
+      if (audioEngine.isRecording) {
+        await audioEngine.pauseSinging();
+      }
+      el.btnRecordResume.click();
+    });
+  }
+
+  if (el.ctxAlignLyric) {
+    el.ctxAlignLyric.addEventListener('click', () => {
+      hideTimelineContextMenu();
+      if (!activeContextTarget) return;
+      lyricsEngine.setAnchorAtCurrentTime(activeContextTarget.time);
+      updateLyricsOffsetDisplay();
+      UI.toast(`已對齊當前歌詞錨點至 ${Utils.formatDuration(activeContextTarget.time)}`, 'success');
+    });
+  }
+
+  if (el.ctxPlayTake) {
+    el.ctxPlayTake.addEventListener('click', () => {
+      hideTimelineContextMenu();
+      if (activeContextTarget && activeContextTarget.take) {
+        const a = new Audio(activeContextTarget.take.url);
+        a.play();
+        UI.toast(`正在試聽 ${activeContextTarget.take.id}`, 'info');
+      }
+    });
+  }
+
+  if (el.ctxReRecordTake) {
+    el.ctxReRecordTake.addEventListener('click', async () => {
+      hideTimelineContextMenu();
+      if (!activeContextTarget || !activeContextTarget.take) return;
+      const take = activeContextTarget.take;
+      const startFmt = Utils.formatDuration(take.startTime);
+      if (await UI.confirm(`確定要重錄【${take.id}】嗎？系統將從 ${startFmt} 開始，並在錄滿 ${take.duration.toFixed(1)} 秒後自動停止，絕不覆蓋別段。`, '僅重錄此段')) {
+        mainTimeline.currentTime = take.startTime;
+        mainTimeline.updatePlayhead(take.startTime, false);
+        await audioEngine.reRecordTake(take.id);
+        
+        el.btnRecordStart.style.display = 'none';
+        el.btnRecordPause.style.display = 'inline-flex';
+        el.btnRecordResume.style.display = 'none';
+        el.btnRecordFinish.style.display = 'none';
+        el.btnRecordReset.style.display = 'none';
+        el.lblTrackStatus.textContent = `[僅重錄 ${take.id} · REC]`;
+        el.lblTrackStatus.style.color = 'var(--danger)';
+
+        mainTimeline.setVocalTakes(audioEngine.vocalTakes);
+        renderVocalTakesList();
+        startLiveRecordLoop();
+      }
+    });
+  }
+
+  if (el.ctxDeleteTake) {
+    el.ctxDeleteTake.addEventListener('click', async () => {
+      hideTimelineContextMenu();
+      if (!activeContextTarget || !activeContextTarget.take) return;
+      const take = activeContextTarget.take;
+      if (await UI.confirm(`確定刪除【${take.id}】嗎？`, '刪除片段')) {
+        audioEngine.deleteTake(take.id);
+        mainTimeline.setVocalTakes(audioEngine.vocalTakes);
+        reviewTimeline.setVocalTakes(audioEngine.vocalTakes);
+        renderVocalTakesList();
+        UI.toast(`已刪除 ${take.id}`, 'info');
+      }
+    });
+  }
+
+  if (el.ctxZoomIn) el.ctxZoomIn.addEventListener('click', () => { mainTimeline.zoomIn(); hideTimelineContextMenu(); });
+  if (el.ctxZoomOut) el.ctxZoomOut.addEventListener('click', () => { mainTimeline.zoomOut(); hideTimelineContextMenu(); });
+  if (el.ctxZoomReset) el.ctxZoomReset.addEventListener('click', () => { mainTimeline.zoomReset(); hideTimelineContextMenu(); });
+
+  // 1-Click 複製互動卡片綁定 (若存在)
   document.querySelectorAll('.config-item').forEach(card => {
     card.addEventListener('click', () => {
       const val = card.querySelector('.config-val') ? card.querySelector('.config-val').textContent : card.textContent;
       const hint = card.querySelector('.copy-hint');
       Utils.copyText(val, hint);
+      UI.toast('已複製資訊至剪貼簿', 'info');
     });
   });
 });
