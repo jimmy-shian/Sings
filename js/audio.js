@@ -1,0 +1,777 @@
+/**
+ * SingStudio - 專業音訊工作站核心引擎 (Professional Audio Engine)
+ * 遵循 OpenDesign 規範：零 Emoji、專業音訊架構、模組化分離
+ * 
+ * 核心升級：
+ * 1. 移除音準打分與卡通評分，改為純粹專業即時音訊電平 (dB/RMS) 與時域振幅 (Oscillogram)
+ * 2. 磁碟 temp_ 暫存機制：每段錄音即時寫入後端 temp_recordings/temp_*.webm，徹底杜絕瀏覽器 RAM 耗盡與卡死
+ * 3. 支援接續錄製 (Punch-in / Resume Recording)：多段 Takes 自由拼接與覆蓋，毫秒級對齊
+ * 4. 伴奏單獨播放即時時鐘推進，驅動時間軸與歌詞
+ * 5. 多 Take 雙軌立體聲無損混音渲染 (OfflineAudioContext) 與 16-bit PCM WAV 匯出
+ */
+
+class AudioEngine {
+  constructor() {
+    this.audioCtx = null;
+    this.micStream = null;
+    this.analyser = null;
+    this.mediaRecorder = null;
+    this.activeTakeChunks = [];
+    
+    // 伴奏播放器
+    this.backingAudio = new Audio();
+    this.backingAudio.preload = 'auto';
+    
+    // 模式: 'local' | 'youtube' | 'demo'
+    this.sourceMode = 'demo';
+    
+    // 伴奏數據與波形特徵
+    this.currentBackingBlob = null;
+    this.currentBackingUrl = null;
+    this.waveformPeaks = null;
+    this.backingDuration = 0;
+    
+    // 人聲片段 Takes (支援接續錄製)
+    // 結構: [{ id: 1, startTime: 0, duration: 15.2, url: '/temp_recordings/...', blob, peaks: [] }]
+    this.vocalTakes = [];
+    this.currentTakeStartTime = 0;
+    this.recordingStartTime = 0;
+    this.recordedDuration = 0;
+    
+    // 錄製狀態: 待機、錄製中、暫停中
+    this.isRecording = false;
+    this.isPaused = false;
+    
+    // 伴奏獨立試聽狀態
+    this.isBackingSoloPlaying = false;
+    
+    // 雙軌後製混音播放狀態
+    this.isPlayingMix = false;
+    this.mixCurrentTime = 0;
+    this.mixSyncLoopId = null;
+    this.vocalTakeAudios = []; // [{ take, audio }]
+    
+    // 混音參數
+    this.latencyOffsetMs = -40; // 延遲校準 (毫秒)
+    this.backingVolume = 0.8;
+    this.vocalVolume = 1.0;
+    this.backingMuted = false;
+    this.vocalMuted = false;
+    this.reverbEnabled = true;
+    
+    // 即時音訊取樣緩衝區 (1024 點)
+    this.bufferSize = 1024;
+    this.timeData = new Float32Array(this.bufferSize);
+  }
+
+  async ensureAudioContext() {
+    if (!this.audioCtx) {
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      this.audioCtx = new AudioCtxClass();
+    }
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume();
+    }
+    return this.audioCtx;
+  }
+
+  async initMicrophone() {
+    await this.ensureAudioContext();
+    if (this.micStream && this.analyser) return;
+
+    try {
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false, // 建議戴耳機，保留原生動態
+          noiseSuppression: false,
+          autoGainControl: false,
+          latency: 0
+        },
+        video: false
+      });
+
+      const source = this.audioCtx.createMediaStreamSource(this.micStream);
+      this.analyser = this.audioCtx.createAnalyser();
+      this.analyser.fftSize = this.bufferSize;
+      source.connect(this.analyser);
+    } catch (err) {
+      console.error('麥克風存取失敗:', err);
+      throw new Error('無法存取麥克風，請檢查瀏覽器麥克風權限並使用耳機。');
+    }
+  }
+
+  /**
+   * 取得即時人聲音訊電平 (dB / RMS) 與時域振幅波形
+   */
+  getLiveAudioData() {
+    if (!this.analyser) {
+      return { rms: 0, peakDb: -60, peak: 0, timeDomain: null };
+    }
+
+    this.analyser.getFloatTimeDomainData(this.timeData);
+    let sum = 0;
+    let peak = 0;
+
+    for (let i = 0; i < this.bufferSize; i++) {
+      const val = this.timeData[i];
+      sum += val * val;
+      const absVal = Math.abs(val);
+      if (absVal > peak) peak = absVal;
+    }
+
+    const rms = Math.sqrt(sum / this.bufferSize);
+    const peakDb = peak > 0.0001 ? Math.max(-60, 20 * Math.log10(peak)) : -60;
+
+    return {
+      rms: rms,
+      peakDb: peakDb,
+      peak: peak,
+      timeDomain: this.timeData
+    };
+  }
+
+  /**
+   * 上傳錄音分段至後端磁碟暫存 (temp_recordings/)
+   */
+  async uploadTempTake(blob, filename) {
+    try {
+      const resp = await fetch('/api/temp/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'audio/webm',
+          'X-Temp-Filename': filename
+        },
+        body: blob
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.url;
+      }
+    } catch (e) {
+      console.warn('後端磁碟暫存寫入失敗，使用瀏覽器 RAM Blob 作為備援:', e);
+    }
+    return URL.createObjectURL(blob);
+  }
+
+  /**
+   * 從音訊 Blob/File 解碼提取波形 Peaks (800 點)
+   */
+  async extractWaveformPeaks(fileOrBlob, numPeaks = 800) {
+    try {
+      await this.ensureAudioContext();
+      let arrayBuffer;
+      if (fileOrBlob instanceof Blob || fileOrBlob instanceof File) {
+        arrayBuffer = await fileOrBlob.arrayBuffer();
+      } else if (fileOrBlob instanceof ArrayBuffer) {
+        arrayBuffer = fileOrBlob;
+      } else {
+        return null;
+      }
+
+      const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      const channelData = audioBuffer.getChannelData(0);
+      const step = Math.max(1, Math.floor(channelData.length / numPeaks));
+      const peaks = new Float32Array(numPeaks);
+
+      for (let i = 0; i < numPeaks; i++) {
+        let maxVal = 0;
+        const start = i * step;
+        const end = Math.min(channelData.length, start + step);
+        for (let j = start; j < end; j++) {
+          const abs = Math.abs(channelData[j]);
+          if (abs > maxVal) maxVal = abs;
+        }
+        peaks[i] = Math.min(1.0, maxVal * 1.25);
+      }
+
+      return {
+        peaks: peaks,
+        duration: audioBuffer.duration
+      };
+    } catch (err) {
+      console.warn('波形解碼錯誤:', err);
+      return null;
+    }
+  }
+
+  /**
+   * 載入本地伴奏
+   */
+  async loadBackingTrack(file) {
+    await this.ensureAudioContext();
+    this.currentBackingBlob = file;
+    if (this.currentBackingUrl) URL.revokeObjectURL(this.currentBackingUrl);
+    this.currentBackingUrl = URL.createObjectURL(file);
+    this.backingAudio.src = this.currentBackingUrl;
+
+    const waveResult = await this.extractWaveformPeaks(file, 800);
+    if (waveResult) {
+      this.waveformPeaks = waveResult.peaks;
+      this.backingDuration = waveResult.duration;
+    } else {
+      await new Promise(resolve => {
+        this.backingAudio.onloadedmetadata = () => {
+          this.backingDuration = this.backingAudio.duration || 60;
+          resolve();
+        };
+      });
+    }
+
+    this.sourceMode = 'local';
+    return this.backingDuration;
+  }
+
+  /**
+   * 合成內建示範伴奏 (56秒 卡農和弦)
+   */
+  async generateDemoBackingTrack() {
+    await this.ensureAudioContext();
+    const sampleRate = 44100;
+    const duration = 56;
+    const totalSamples = sampleRate * duration;
+    const buffer = this.audioCtx.createBuffer(2, totalSamples, sampleRate);
+    const left = buffer.getChannelData(0);
+    const right = buffer.getChannelData(1);
+
+    const chords = [
+      [261.63, 329.63, 392.00], // C
+      [196.00, 246.94, 293.66], // G
+      [220.00, 261.63, 329.63], // Am
+      [164.81, 196.00, 246.94], // Em
+      [174.61, 220.00, 261.63], // F
+      [130.81, 164.81, 196.00], // C
+      [174.61, 220.00, 261.63], // F
+      [196.00, 246.94, 293.66]  // G
+    ];
+
+    const chordDuration = 4.0;
+    const samplesPerChord = Math.floor(sampleRate * chordDuration);
+
+    for (let i = 0; i < totalSamples; i++) {
+      const chordIdx = Math.floor(i / samplesPerChord) % chords.length;
+      const notes = chords[chordIdx];
+      const t = i / sampleRate;
+
+      let sample = 0;
+      for (let n = 0; n < notes.length; n++) {
+        const freq = notes[n];
+        const osc = Math.sin(2 * Math.PI * freq * t) * 0.15;
+        const env = Math.exp(-((t % 0.5) * 4));
+        sample += osc * (0.6 + 0.4 * env);
+      }
+
+      left[i] = sample;
+      right[i] = sample * 0.95;
+    }
+
+    const wavBlob = this.audioBufferToWavBlob(buffer);
+    this.currentBackingBlob = wavBlob;
+    if (this.currentBackingUrl) URL.revokeObjectURL(this.currentBackingUrl);
+    this.currentBackingUrl = URL.createObjectURL(wavBlob);
+    this.backingAudio.src = this.currentBackingUrl;
+    this.backingDuration = duration;
+
+    const waveResult = await this.extractWaveformPeaks(wavBlob, 800);
+    if (waveResult) {
+      this.waveformPeaks = waveResult.peaks;
+    }
+
+    this.sourceMode = 'demo';
+    return duration;
+  }
+
+  // ==========================================================================
+  // 伴奏獨立試聽播放器 (時間軸連動)
+  // ==========================================================================
+  playBackingOnly(startAtSec = 0) {
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.seekTo(startAtSec);
+      window.youtubeManager.play();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.currentTime = Math.max(0, startAtSec);
+      this.backingAudio.play().catch(e => console.warn(e));
+    }
+    this.isBackingSoloPlaying = true;
+  }
+
+  pauseBackingOnly() {
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.pause();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.pause();
+    }
+    this.isBackingSoloPlaying = false;
+  }
+
+  toggleBackingOnly() {
+    if (this.isBackingSoloPlaying) {
+      this.pauseBackingOnly();
+      return false;
+    } else {
+      const cur = this.getCurrentTime();
+      this.playBackingOnly(cur);
+      return true;
+    }
+  }
+
+  seekBackingOnly(targetSec) {
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.seekTo(targetSec);
+    } else if (this.backingAudio.src) {
+      this.backingAudio.currentTime = Math.max(0, targetSec);
+    }
+  }
+
+  // ==========================================================================
+  // 錄製流程：開始 / 暫停 / 接續錄製 (Punch-in) / 停止
+  // ==========================================================================
+
+  /**
+   * 開始或接續錄製
+   * @param {number} atTimeSec - 起始時間戳 (支援接續錄製)
+   */
+  async startSinging(atTimeSec = 0) {
+    await this.initMicrophone();
+    this.pauseBackingOnly();
+    this.stopMixedPreview();
+
+    // 接續錄製 (Punch-in) 處理：截斷或覆蓋目前時間點之後的舊片段
+    if (atTimeSec > 0 && this.vocalTakes.length > 0) {
+      this.vocalTakes = this.vocalTakes.filter(t => t.startTime < atTimeSec);
+      // 若有片段跨越 atTimeSec，裁切其時長
+      this.vocalTakes.forEach(t => {
+        if (t.startTime + t.duration > atTimeSec) {
+          t.duration = atTimeSec - t.startTime;
+        }
+      });
+    } else if (atTimeSec === 0 && !this.isPaused) {
+      // 全新開始錄製，清空 Takes
+      this.vocalTakes = [];
+    }
+
+    this.currentTakeStartTime = Math.max(0, atTimeSec);
+    this.activeTakeChunks = [];
+    this.recordingStartTime = performance.now() - (this.currentTakeStartTime * 1000);
+
+    // 啟動 MediaRecorder
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+    }
+
+    this.mediaRecorder = new MediaRecorder(this.micStream, {
+      mimeType: mimeType,
+      audioBitsPerSecond: 256000
+    });
+
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        this.activeTakeChunks.push(e.data);
+      }
+    };
+
+    // 啟動伴奏同步播放
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.seekTo(this.currentTakeStartTime);
+      window.youtubeManager.play();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.currentTime = this.currentTakeStartTime;
+      this.backingAudio.play().catch(e => console.warn(e));
+    }
+
+    this.mediaRecorder.start(100);
+    this.isRecording = true;
+    this.isPaused = false;
+  }
+
+  /**
+   * 暫停錄製 (保存目前 Take 並寫入磁碟 temp_ 暫存)
+   */
+  async pauseSinging() {
+    if (!this.isRecording || !this.mediaRecorder) return;
+
+    // 暫停伴奏
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.pause();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.pause();
+    }
+
+    const currentClockTime = this.getCurrentTime();
+    const takeDuration = Math.max(0.1, currentClockTime - this.currentTakeStartTime);
+
+    // 停止 MediaRecorder 並封裝 Take
+    await new Promise((resolve) => {
+      this.mediaRecorder.onstop = async () => {
+        const takeBlob = new Blob(this.activeTakeChunks, { type: this.mediaRecorder.mimeType || 'audio/webm' });
+        const takeId = `Take_${this.vocalTakes.length + 1}`;
+        const tempName = `temp_vocal_${Date.now()}_take${this.vocalTakes.length + 1}.webm`;
+
+        // 上傳至本機磁碟 temp_ 暫存目錄
+        const tempUrl = await this.uploadTempTake(takeBlob, tempName);
+
+        // 提取此 Take 的波形
+        const wave = await this.extractWaveformPeaks(takeBlob, 120);
+
+        this.vocalTakes.push({
+          id: takeId,
+          startTime: this.currentTakeStartTime,
+          duration: takeDuration,
+          blob: takeBlob,
+          url: tempUrl,
+          peaks: wave ? wave.peaks : null
+        });
+
+        this.activeTakeChunks = [];
+        resolve();
+      };
+      this.mediaRecorder.stop();
+    });
+
+    this.isRecording = false;
+    this.isPaused = true;
+    this.recordedDuration = Math.max(this.recordedDuration, currentClockTime);
+    return this.vocalTakes;
+  }
+
+  /**
+   * 停止並完成演唱 (結束錄音，返回完整結果)
+   */
+  async stopSinging() {
+    if (this.isRecording) {
+      await this.pauseSinging();
+    }
+
+    this.isRecording = false;
+    this.isPaused = false;
+
+    // 停止伴奏
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.pause();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.pause();
+    }
+
+    // 計算總錄製長度
+    let maxTakeEnd = 0;
+    this.vocalTakes.forEach(t => {
+      const end = t.startTime + t.duration;
+      if (end > maxTakeEnd) maxTakeEnd = end;
+    });
+
+    this.recordedDuration = Math.max(maxTakeEnd, this.backingDuration || 0);
+
+    return {
+      duration: this.recordedDuration,
+      takes: this.vocalTakes,
+      backingBlob: this.currentBackingBlob
+    };
+  }
+
+  resetRecording() {
+    this.vocalTakes = [];
+    this.isRecording = false;
+    this.isPaused = false;
+    this.recordedDuration = 0;
+    this.stopMixedPreview();
+  }
+
+  getCurrentTime() {
+    if (this.isRecording) {
+      return Math.max(0, (performance.now() - this.recordingStartTime) / 1000);
+    }
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      return window.youtubeManager.getCurrentTime();
+    }
+    return this.backingAudio.currentTime || 0;
+  }
+
+  getReviewDuration() {
+    return this.recordedDuration > 0 ? this.recordedDuration : (this.backingDuration || 60);
+  }
+
+  // ==========================================================================
+  // 後製雙軌混音同步播放控制 (支援多 Takes)
+  // ==========================================================================
+
+  initVocalTakeAudios() {
+    this.vocalTakeAudios = this.vocalTakes.map(take => {
+      const a = new Audio(take.url);
+      a.preload = 'auto';
+      return { take, audio: a };
+    });
+  }
+
+  async toggleMixedPreview() {
+    if (this.isPlayingMix) {
+      this.pauseMixedPreview();
+      return false;
+    } else {
+      await this.playMixedPreview(this.mixCurrentTime);
+      return true;
+    }
+  }
+
+  async playMixedPreview(startAtSec = 0) {
+    await this.ensureAudioContext();
+    this.stopMixedPreview();
+    this.initVocalTakeAudios();
+
+    this.mixCurrentTime = Math.max(0, startAtSec);
+    const offsetSec = (this.latencyOffsetMs || 0) / 1000;
+
+    // 1. 伴奏播放
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.seekTo(this.mixCurrentTime);
+      window.youtubeManager.play();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.currentTime = this.mixCurrentTime;
+      this.backingAudio.volume = this.backingMuted ? 0 : this.backingVolume;
+      this.backingAudio.play().catch(e => console.warn(e));
+    }
+
+    // 2. 多 Takes 人聲同步排程
+    this.vocalTakeAudios.forEach(({ take, audio }) => {
+      audio.volume = this.vocalMuted ? 0 : Math.min(1.0, this.vocalVolume);
+      const alignedStart = Math.max(0, take.startTime + offsetSec);
+      const alignedEnd = alignedStart + take.duration;
+
+      if (this.mixCurrentTime >= alignedStart && this.mixCurrentTime < alignedEnd) {
+        audio.currentTime = this.mixCurrentTime - alignedStart;
+        audio.play().catch(e => console.warn(e));
+      }
+    });
+
+    this.isPlayingMix = true;
+    this.startMixSyncMonitor();
+  }
+
+  pauseMixedPreview() {
+    this.isPlayingMix = false;
+    if (this.mixSyncLoopId) {
+      cancelAnimationFrame(this.mixSyncLoopId);
+      this.mixSyncLoopId = null;
+    }
+
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.pause();
+    } else if (this.backingAudio.src) {
+      this.backingAudio.pause();
+    }
+
+    this.vocalTakeAudios.forEach(({ audio }) => audio.pause());
+  }
+
+  stopMixedPreview() {
+    this.pauseMixedPreview();
+    this.mixCurrentTime = 0;
+  }
+
+  seekMixedPreview(targetSec) {
+    this.mixCurrentTime = Math.max(0, Math.min(this.getReviewDuration(), targetSec));
+    const offsetSec = (this.latencyOffsetMs || 0) / 1000;
+
+    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+      window.youtubeManager.seekTo(this.mixCurrentTime);
+    } else if (this.backingAudio.src) {
+      this.backingAudio.currentTime = this.mixCurrentTime;
+    }
+
+    this.vocalTakeAudios.forEach(({ take, audio }) => {
+      const alignedStart = Math.max(0, take.startTime + offsetSec);
+      const alignedEnd = alignedStart + take.duration;
+
+      if (this.mixCurrentTime >= alignedStart && this.mixCurrentTime < alignedEnd) {
+        audio.currentTime = this.mixCurrentTime - alignedStart;
+        if (this.isPlayingMix) audio.play().catch(e => console.warn(e));
+      } else {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    });
+  }
+
+  setLatencyOffset(newOffsetMs) {
+    this.latencyOffsetMs = newOffsetMs;
+    if (this.isPlayingMix) {
+      this.seekMixedPreview(this.mixCurrentTime);
+    }
+  }
+
+  startMixSyncMonitor() {
+    let lastTime = performance.now();
+
+    const monitor = () => {
+      if (!this.isPlayingMix) return;
+
+      const now = performance.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      this.mixCurrentTime += dt;
+      const totalDur = this.getReviewDuration();
+
+      // 檢查每個 Take 是否該在此時間點觸發播放
+      const offsetSec = (this.latencyOffsetMs || 0) / 1000;
+      this.vocalTakeAudios.forEach(({ take, audio }) => {
+        const alignedStart = Math.max(0, take.startTime + offsetSec);
+        const alignedEnd = alignedStart + take.duration;
+
+        if (this.mixCurrentTime >= alignedStart && this.mixCurrentTime < alignedEnd) {
+          if (audio.paused) {
+            audio.currentTime = Math.max(0, this.mixCurrentTime - alignedStart);
+            audio.play().catch(e => console.warn(e));
+          }
+        } else {
+          if (!audio.paused) {
+            audio.pause();
+          }
+        }
+      });
+
+      if (this.mixCurrentTime >= totalDur) {
+        this.stopMixedPreview();
+        return;
+      }
+
+      this.mixSyncLoopId = requestAnimationFrame(monitor);
+    };
+
+    this.mixSyncLoopId = requestAnimationFrame(monitor);
+  }
+
+  // ==========================================================================
+  // 多軌無損混音渲染與 WAV 匯出
+  // ==========================================================================
+  async exportMixedWavBlob() {
+    await this.ensureAudioContext();
+    const sampleRate = 44100;
+    const totalDuration = this.getReviewDuration();
+    const offlineCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
+
+    // 1. 解碼伴奏軌
+    if (this.currentBackingBlob) {
+      try {
+        const backingArray = await this.currentBackingBlob.arrayBuffer();
+        const backingBuffer = await this.audioCtx.decodeAudioData(backingArray.slice(0));
+        const bSource = offlineCtx.createBufferSource();
+        const bGain = offlineCtx.createGain();
+        bSource.buffer = backingBuffer;
+        bGain.gain.value = this.backingMuted ? 0 : this.backingVolume;
+        bSource.connect(bGain);
+        bGain.connect(offlineCtx.destination);
+        bSource.start(0);
+      } catch (e) {
+        console.warn('伴奏解碼渲染失敗:', e);
+      }
+    }
+
+    // 2. 解碼多段 Vocal Takes
+    const offsetSec = (this.latencyOffsetMs || 0) / 1000;
+
+    for (const take of this.vocalTakes) {
+      try {
+        const vArray = await take.blob.arrayBuffer();
+        const vBuffer = await this.audioCtx.decodeAudioData(vArray.slice(0));
+
+        const vSource = offlineCtx.createBufferSource();
+        const vGain = offlineCtx.createGain();
+        vSource.buffer = vBuffer;
+        vGain.gain.value = this.vocalMuted ? 0 : this.vocalVolume;
+
+        const alignedStart = Math.max(0, take.startTime + offsetSec);
+
+        // KTV 殘響混響 (Reverb)
+        if (this.reverbEnabled) {
+          const convolver = offlineCtx.createConvolver();
+          convolver.buffer = this.createSyntheticImpulse(offlineCtx, 1.5, 2.2);
+          const wetGain = offlineCtx.createGain();
+          wetGain.gain.value = 0.22;
+          vSource.connect(convolver);
+          convolver.connect(wetGain);
+          wetGain.connect(offlineCtx.destination);
+        }
+
+        vSource.connect(vGain);
+        vGain.connect(offlineCtx.destination);
+        vSource.start(alignedStart);
+      } catch (e) {
+        console.warn(`Take ${take.id} 解碼渲染失敗:`, e);
+      }
+    }
+
+    const renderedBuffer = await offlineCtx.startRendering();
+    return this.audioBufferToWavBlob(renderedBuffer);
+  }
+
+  createSyntheticImpulse(ctx, duration = 1.5, decay = 2.0) {
+    const sampleRate = ctx.sampleRate;
+    const length = sampleRate * duration;
+    const impulse = ctx.createBuffer(2, length, sampleRate);
+    const left = impulse.getChannelData(0);
+    const right = impulse.getChannelData(1);
+
+    for (let i = 0; i < length; i++) {
+      const n = (1 - i / length) ** decay;
+      left[i] = (Math.random() * 2 - 1) * n;
+      right[i] = (Math.random() * 2 - 1) * n;
+    }
+    return impulse;
+  }
+
+  audioBufferToWavBlob(buffer) {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1;
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const samplesCount = buffer.length;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = samplesCount * blockAlign;
+    const bufferLength = 44 + dataSize;
+
+    const arrayBuffer = new ArrayBuffer(bufferLength);
+    const view = new DataView(arrayBuffer);
+
+    this.writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    this.writeString(view, 8, 'WAVE');
+    this.writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    this.writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    const channels = [];
+    for (let c = 0; c < numChannels; c++) {
+      channels.push(buffer.getChannelData(c));
+    }
+
+    let offset = 44;
+    for (let i = 0; i < samplesCount; i++) {
+      for (let c = 0; c < numChannels; c++) {
+        let sample = Math.max(-1, Math.min(1, channels[c][i]));
+        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  }
+
+  writeString(view, offset, string) {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  }
+}
+
+window.audioEngine = new AudioEngine();
