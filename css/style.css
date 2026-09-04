@@ -885,45 +885,65 @@ body {
   transition: width 0.05s linear;
 }
 
-/* 即時伴奏音量調節與耳返監聽列 */
+/* 即時伴奏音量調節與耳返監聽列 (清晰兩列分組，杜絕換行擠壓) */
 .live-audio-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--surface-subtle);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  flex-wrap: wrap;
+}
+
+.live-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.live-tool-monitor-row {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 6px;
+}
+
+.monitor-controls-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
 }
 
 .live-tool-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .live-tool-lbl {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13.5px;
+  gap: 5px;
+  font-size: 13px;
   color: var(--text-secondary);
   font-weight: 500;
   white-space: nowrap;
 }
 
 .live-tool-lbl .icon {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   stroke: currentColor;
   fill: none;
   stroke-width: 2;
 }
 
 .range-input-sm {
-  width: 100px;
+  width: 90px;
   height: 5px;
   accent-color: var(--accent);
   cursor: pointer;
@@ -931,11 +951,11 @@ body {
 
 .vol-badge {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-primary);
   background: var(--surface);
   border: 1px solid var(--border-subtle);
-  padding: 2px 6px;
+  padding: 1px 6px;
   border-radius: var(--radius-sm);
   min-width: 44px;
   text-align: center;
@@ -943,8 +963,17 @@ body {
 
 .live-tool-divider {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--border-subtle);
+}
+
+.toggle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .btn-outline.active {
@@ -1539,8 +1568,20 @@ body {
   .live-audio-toolbar {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
-    padding: 12px;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .live-tool-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .monitor-controls-box {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
   }
 
   .live-tool-item {

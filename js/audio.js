@@ -62,13 +62,16 @@ class AudioEngine {
 
     // 即時耳返監聽 (Direct Monitoring) 參數
     this.isMonitoringEnabled = false;
-    this.monitorVolume = 1.0;
-    this.micSensitivity = 0.85; // 麥克風靈敏度 (預設 85%，可降低雜音)
-    this.isNoiseFilterEnabled = true; // 85Hz 低頻風噪過濾
+    this.monitorVolume = 1.0;         // 耳返人聲音量 (0~3.0，最高 300%)
+    this.micSensitivity = 0.85;       // 麥克風靈敏度 (0.1~2.0，最高 200%)
+    this.isNoiseFilterEnabled = true; // 智慧降噪 (Noise Gate 噪聲門限 + 120Hz 雙二階濾波)
     this.micSourceNode = null;
-    this.micGainNode = null;
-    this.noiseFilterNode = null;
-    this.monitorGainNode = null;
+    this.micGainNode = null;          // 麥克風靈敏度節點
+    this.noiseFilterNode = null;      // 120Hz 高通/環境濾波
+    this.gateGainNode = null;         // 噪聲門限平滑動態增益
+    this.compressorNode = null;       // 防爆音軟限制壓縮器 (防止 300% 破音)
+    this.noiseGateTimer = null;       // 噪聲門限包絡檢測計時器
+    this.monitorGainNode = null;      // 耳返總音量節點
     this.activeTakeAudio = null;
     this.takePlaybackRaf = null;
 
@@ -250,14 +253,58 @@ class AudioEngine {
       this.analyser.fftSize = this.bufferSize;
       source.connect(this.analyser);
 
-      // 建立耳機即時耳返通道 (Direct Monitoring)
+      // 建立耳機即時耳返與音訊處理通道 (Direct Monitoring Chain)
       this.micSourceNode = source;
+
+      // 1. 麥克風靈敏度控制 (0.1 ~ 2.0)
+      if (!this.micGainNode) {
+        this.micGainNode = this.audioCtx.createGain();
+      }
+      this.micGainNode.gain.value = this.micSensitivity;
+
+      // 2. 專業 120Hz 高通濾波器 (High-pass Filter)，有效消除低頻震動與室內低頻轟鳴
+      if (!this.noiseFilterNode) {
+        this.noiseFilterNode = this.audioCtx.createBiquadFilter();
+        this.noiseFilterNode.type = 'highpass';
+        this.noiseFilterNode.frequency.value = 120;
+        this.noiseFilterNode.Q.value = 0.707;
+      }
+
+      // 3. 噪聲門限動態增益 (Noise Gate Gain Node)
+      if (!this.gateGainNode) {
+        this.gateGainNode = this.audioCtx.createGain();
+        this.gateGainNode.gain.value = 1.0;
+      }
+
+      // 4. 耳返總音量控制 (0 ~ 3.0，最高 300%)
       if (!this.monitorGainNode) {
         this.monitorGainNode = this.audioCtx.createGain();
       }
       this.monitorGainNode.gain.value = this.isMonitoringEnabled ? this.monitorVolume : 0;
-      this.micSourceNode.connect(this.monitorGainNode);
-      this.monitorGainNode.connect(this.audioCtx.destination);
+
+      // 5. 輸出防爆音軟限制壓縮器 (DynamicsCompressorNode，保護耳朵與防止 300% 破音)
+      if (!this.compressorNode) {
+        this.compressorNode = this.audioCtx.createDynamicsCompressor();
+        this.compressorNode.threshold.value = -6; // -6 dB 軟門限
+        this.compressorNode.knee.value = 8;
+        this.compressorNode.ratio.value = 12;
+        this.compressorNode.attack.value = 0.003;
+        this.compressorNode.release.value = 0.15;
+      }
+
+      // 串接固定後段：monitorGainNode -> compressorNode -> destination
+      try {
+        this.monitorGainNode.disconnect();
+        this.compressorNode.disconnect();
+      } catch (e) {}
+      this.monitorGainNode.connect(this.compressorNode);
+      this.compressorNode.connect(this.audioCtx.destination);
+
+      // 更新前段路由 (直通 vs 降噪)
+      this.updateMonitorRouting();
+
+      // 啟動真實 Noise Gate 檢測迴圈
+      this.startNoiseGateDetection();
     } catch (err) {
       console.error('麥克風存取失敗:', err);
       throw new Error('無法存取麥克風，請檢查瀏覽器麥克風權限並使用耳機。');
@@ -265,28 +312,86 @@ class AudioEngine {
   }
 
   /**
+   * 啟動真實 Noise Gate 檢測迴圈 (25 FPS 檢測 RMS)
+   * 當歌聲低於環境底噪門限 (-46 dB) 時，平滑靜音門限；開口歌唱時立即平滑開啟 (Attack 10ms, Release 120ms)
+   */
+  startNoiseGateDetection() {
+    if (this.noiseGateTimer) {
+      clearInterval(this.noiseGateTimer);
+      this.noiseGateTimer = null;
+    }
+
+    const GATE_THRESHOLD_DB = -46; // 底噪門限：低於 -46dB 視為背景雜音與嘶嘶聲
+    let isGateOpen = true;
+
+    this.noiseGateTimer = setInterval(() => {
+      if (!this.analyser || !this.gateGainNode || !this.audioCtx) return;
+
+      // 若關閉降噪或未開啟耳返，維持全開直通狀態
+      if (!this.isNoiseFilterEnabled || !this.isMonitoringEnabled) {
+        if (!isGateOpen) {
+          isGateOpen = true;
+          const now = this.audioCtx.currentTime;
+          this.gateGainNode.gain.cancelScheduledValues(now);
+          this.gateGainNode.gain.setTargetAtTime(1.0, now, 0.02);
+        }
+        return;
+      }
+
+      const audioData = this.getLiveAudioData();
+      const peakDb = audioData.peakDb;
+      const now = this.audioCtx.currentTime;
+
+      if (peakDb < GATE_THRESHOLD_DB) {
+        // 低於門限：平滑將增益壓低至 0 (完全靜音底噪，避免噗噗聲或卡嗒聲)
+        if (isGateOpen) {
+          isGateOpen = false;
+          this.gateGainNode.gain.cancelScheduledValues(now);
+          this.gateGainNode.gain.setTargetAtTime(0.0, now, 0.08); // Release 80ms 平滑衰減
+        }
+      } else {
+        // 高於門限 (有人開口唱歌)：迅速打開門限 (Attack 8ms)
+        if (!isGateOpen) {
+          isGateOpen = true;
+          this.gateGainNode.gain.cancelScheduledValues(now);
+          this.gateGainNode.gain.setTargetAtTime(1.0, now, 0.015);
+        }
+      }
+    }, 40);
+  }
+
+  /**
    * 更新耳返音訊過濾路由
+   * 降噪模式：micSourceNode -> micGainNode -> noiseFilterNode(120Hz) -> gateGainNode(Noise Gate) -> monitorGainNode
+   * 原生直通：micSourceNode -> micGainNode -> monitorGainNode
    */
   updateMonitorRouting() {
-    if (!this.micGainNode || !this.monitorGainNode || !this.noiseFilterNode) return;
+    if (!this.micSourceNode || !this.micGainNode || !this.monitorGainNode) return;
     try {
-      this.micGainNode.disconnect(this.monitorGainNode);
-      this.micGainNode.disconnect(this.noiseFilterNode);
-      this.noiseFilterNode.disconnect(this.monitorGainNode);
+      this.micSourceNode.disconnect();
+      this.micGainNode.disconnect();
+      if (this.noiseFilterNode) this.noiseFilterNode.disconnect();
+      if (this.gateGainNode) this.gateGainNode.disconnect();
 
-      if (this.isNoiseFilterEnabled) {
+      // micSourceNode 永遠先經過 micGainNode (靈敏度)
+      this.micSourceNode.connect(this.micGainNode);
+
+      if (this.isNoiseFilterEnabled && this.noiseFilterNode && this.gateGainNode) {
+        // 啟用智慧降噪：靈敏度 -> 120Hz 高通 -> 噪聲門動態增益 -> 耳返主音量
         this.micGainNode.connect(this.noiseFilterNode);
-        this.noiseFilterNode.connect(this.monitorGainNode);
+        this.noiseFilterNode.connect(this.gateGainNode);
+        this.gateGainNode.connect(this.monitorGainNode);
       } else {
+        // 原生動態直通：靈敏度 -> 耳返主音量
         this.micGainNode.connect(this.monitorGainNode);
       }
     } catch (e) {
-      // 忽略初次未連接時的 disconnect 警告
+      console.warn('更新耳返音訊路由注意:', e);
     }
   }
 
   /**
-   * 設定麥克風輸入靈敏度 (0.1 ~ 1.5, 預設 0.85)
+   * 設定麥克風輸入靈敏度 (0.1 ~ 2.0, 預設 0.85, 最高 200%)
    */
   setMicSensitivity(val) {
     this.micSensitivity = Math.max(0.05, Math.min(2.0, val));
@@ -296,7 +401,7 @@ class AudioEngine {
   }
 
   /**
-   * 開啟或關閉耳返雜音高通濾波
+   * 開啟或關閉耳返智慧降噪 (Noise Gate 門限 + 120Hz 高通)
    */
   setNoiseFilter(enabled) {
     this.isNoiseFilterEnabled = !!enabled;
@@ -384,10 +489,10 @@ class AudioEngine {
   }
 
   /**
-   * 調節即時耳返人聲音量
+   * 調節即時耳返人聲音量 (0.0 ~ 3.0，最高可達 300%)
    */
   setMonitorVolume(vol) {
-    this.monitorVolume = Math.max(0, Math.min(1.5, vol));
+    this.monitorVolume = Math.max(0, Math.min(3.0, vol));
     if (this.monitorGainNode && this.isMonitoringEnabled) {
       this.monitorGainNode.gain.value = this.monitorVolume;
     }

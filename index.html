@@ -99,7 +99,7 @@
             <!-- 面板 1-B: YouTube 直連搜尋 -->
             <div id="paneYouTube" class="source-pane active">
               <div class="search-bar">
-                <input type="text" id="ytSearchInput" class="input-text" placeholder="輸入歌曲關鍵字或貼上 YouTube 網址 (如: 晴天)...">
+                <input type="text" id="ytSearchInput" class="input-text" value="https://www.youtube.com/watch?v=VS1lvYuW3LQ" placeholder="輸入歌曲關鍵字或貼上 YouTube 網址 (如: 晴天)...">
                 <button id="btnYtSearch" class="btn btn-primary" type="button">搜尋 / 載入</button>
               </div>
 
@@ -213,48 +213,52 @@
             </div>
           </div>
 
-          <!-- 即時伴奏音量調節、人聲消除與耳機耳返監聽列 (錄製時隨時可調，預設為匯出音量) -->
+          <!-- 即時控制工具列：伴奏控制行與耳機耳返降噪控制行 (清晰兩列編排，解決擠壓錯位) -->
           <div class="live-audio-toolbar">
-            <div class="live-tool-item">
-              <span class="live-tool-lbl">
-                <svg class="icon" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-                伴奏音量:
-              </span>
-              <input type="range" id="sliderLiveBackingVol" class="range-input-sm" min="0" max="150" value="100" title="即時伴奏音量 (0~150%)">
-              <span id="lblLiveBackingVol" class="vol-badge">100%</span>
+            <!-- 第 1 列：伴奏音樂與人聲消除控制 -->
+            <div class="live-tool-row">
+              <div class="live-tool-item">
+                <span class="live-tool-lbl">
+                  <svg class="icon" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                  伴奏音量:
+                </span>
+                <input type="range" id="sliderLiveBackingVol" class="range-input-sm" min="0" max="150" value="100" title="即時伴奏音量 (0~150%)">
+                <span id="lblLiveBackingVol" class="vol-badge">100%</span>
+              </div>
+
+              <div class="live-tool-item">
+                <button id="btnToggleVocalCancel" class="btn btn-sm btn-outline" type="button" title="利用立體聲相位差分技術即時消除歌曲中央主唱 (適用於本地音訊/示範)">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line><line x1="3" y1="3" x2="21" y2="21" stroke="var(--danger)" stroke-width="2.5"></line></svg>
+                  <span id="lblVocalCancel">🎙️ 消除人聲: 關</span>
+                </button>
+              </div>
             </div>
 
-            <div class="live-tool-divider"></div>
+            <!-- 第 2 列：耳麥監聽、真實降噪與防爆音耳返控制 (最高 300% 輸出) -->
+            <div class="live-tool-row live-tool-monitor-row">
+              <div class="live-tool-item">
+                <button id="btnToggleMonitor" class="btn btn-sm btn-outline" type="button" title="耳機即時監聽自己的歌聲 (請務必戴耳機避免嘯叫)">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+                  <span id="lblMonitorStatus">🎧 即時耳返: 關</span>
+                </button>
+              </div>
 
-            <!-- 方案 2: Web Audio 即時消除人聲 (立體聲差分技術) -->
-            <div class="live-tool-item">
-              <button id="btnToggleVocalCancel" class="btn btn-sm btn-outline" type="button" title="利用立體聲相位差分技術即時消除歌曲中央主唱 (適用於本地音訊/示範)">
-                <svg class="icon" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line><line x1="3" y1="3" x2="21" y2="21" stroke="var(--danger)" stroke-width="2.5"></line></svg>
-                <span id="lblVocalCancel">🎙️ 消除人聲: 關</span>
-              </button>
-            </div>
-
-            <div class="live-tool-divider"></div>
-
-            <div class="live-tool-item">
-              <button id="btnToggleMonitor" class="btn btn-sm btn-outline" type="button" title="耳機即時監聽自己的歌聲 (請務必戴耳機避免嘯叫)">
-                <svg class="icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
-                <span id="lblMonitorStatus">🎧 即時耳返: 關</span>
-              </button>
-              <div id="boxMonitorVol" style="display: none; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 5px;">
-                  <span class="live-tool-lbl" style="font-size: 13px;">耳返:</span>
-                  <input type="range" id="sliderLiveMonitorVol" class="range-input-sm" min="0" max="150" value="100" title="即時耳返人聲音量 (0~150%)">
+              <div id="boxMonitorVol" class="monitor-controls-box" style="display: none;">
+                <div class="live-tool-item">
+                  <span class="live-tool-lbl">耳返:</span>
+                  <input type="range" id="sliderLiveMonitorVol" class="range-input-sm" min="0" max="300" value="100" title="即時耳返人聲音量 (0~300% 超大推力，含軟限制防爆音)">
                   <span id="lblLiveMonitorVol" class="vol-badge">100%</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
-                  <span class="live-tool-lbl" style="font-size: 13px;" title="調節麥克風收音靈敏度，若環境雜音多可調低 (預設 85%)">靈敏度:</span>
-                  <input type="range" id="sliderMicSensitivity" class="range-input-sm" min="10" max="150" value="85" title="調節麥克風輸入靈敏度 (10%~150%)">
+
+                <div class="live-tool-item">
+                  <span class="live-tool-lbl" title="調節麥克風收音靈敏度，若環境雜音多可調低 (10%~200%)">靈敏度:</span>
+                  <input type="range" id="sliderMicSensitivity" class="range-input-sm" min="10" max="200" value="85" title="調節麥克風輸入靈敏度 (10%~200%)">
                   <span id="lblMicSensitivity" class="vol-badge">85%</span>
                 </div>
-                <label class="toggle-control" title="85Hz 高通濾波，過濾冷氣與環境低頻風噪" style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+
+                <label class="toggle-control" title="真實動態噪聲門 (Noise Gate) + 120Hz 高通濾波，安靜時完全靜音背景雜音">
                   <input type="checkbox" id="chkNoiseFilter" checked style="accent-color: var(--accent); cursor: pointer;">
-                  <span style="color: var(--text-muted);">降噪</span>
+                  <span style="color: var(--text-secondary); font-weight: 500;">噪聲門降噪</span>
                 </label>
               </div>
             </div>

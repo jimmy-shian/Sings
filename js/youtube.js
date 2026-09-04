@@ -27,6 +27,8 @@ class YouTubeManager {
     this.syncTimer = null;
     this.volume = 100;
 
+    this.pendingVideo = null; // 當 API 尚未就緒時暫存要載入的影片
+
     this.initApi();
   }
 
@@ -44,9 +46,16 @@ class YouTubeManager {
     const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
+    const prevReady = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
       this.isReady = true;
+      if (typeof prevReady === 'function') prevReady();
       console.log('YouTube IFrame API 就緒');
+      if (this.pendingVideo) {
+        const { videoId, title } = this.pendingVideo;
+        this.pendingVideo = null;
+        this.loadVideo(videoId, title);
+      }
     };
   }
 
@@ -131,6 +140,11 @@ class YouTubeManager {
           }
         }
       }).catch(() => {});
+    }
+
+    if (!window.YT || !window.YT.Player) {
+      this.pendingVideo = { videoId, title };
+      return;
     }
 
     if (!this.player) {

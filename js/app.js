@@ -926,11 +926,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 85Hz 環境雜音過濾開關
+  // 智慧噪聲門降噪開關
   if (el.chkNoiseFilter) {
     el.chkNoiseFilter.addEventListener('change', (e) => {
       audioEngine.setNoiseFilter(e.target.checked);
-      UI.toast(e.target.checked ? '已開啟 85Hz 環境雜音過濾' : '已關閉環境雜音過濾 (原生動態)', 'info');
+      UI.toast(e.target.checked ? '已開啟動態噪聲門 (Noise Gate) + 120Hz 高通降噪' : '已關閉降噪 (保留原生動態)', 'info');
     });
   }
 
@@ -1662,4 +1662,12 @@ document.addEventListener('DOMContentLoaded', () => {
       UI.toast('已複製資訊至剪貼簿', 'info');
     });
   });
+
+  // 自動預載預設 YouTube 歌曲 (VS1lvYuW3LQ)
+  try {
+    const defaultYtId = 'VS1lvYuW3LQ';
+    selectYouTubeVideo(defaultYtId, `YouTube 伴奏 (${defaultYtId})`);
+  } catch (e) {
+    console.warn('預設 YouTube 伴奏初始化注意:', e);
+  }
 });
