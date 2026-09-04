@@ -60,7 +60,40 @@ dependencies {
     }
 }
 """)
-        print(f"Patched: {app_gradle}")
+    # 4. 配置正式 Release 簽名 (自動啟用 v1 與 v2 簽名，解決現代 Android 無法安裝問題)
+    keystore_src = "singstudio.keystore"
+    keystore_dst = os.path.join("android", "app", "singstudio.keystore")
+    if os.path.exists(keystore_src):
+        import shutil
+        shutil.copy2(keystore_src, keystore_dst)
+        print(f"Copied keystore to: {keystore_dst}")
+
+    if os.path.exists(app_gradle):
+        with open(app_gradle, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        signing_block = """
+    signingConfigs {
+        release {
+            storeFile file('singstudio.keystore')
+            storePassword '123456'
+            keyAlias 'mykey'
+            keyPassword '123456'
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+"""
+        if "signingConfigs {" not in content:
+            if "buildTypes {" in content:
+                content = content.replace("buildTypes {", signing_block + "\n    buildTypes {")
+                content = content.replace(
+                    "release {\n            minifyEnabled false",
+                    "release {\n            signingConfig signingConfigs.release\n            minifyEnabled false"
+                )
+                with open(app_gradle, "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"Patched release signingConfig in: {app_gradle}")
 
 if __name__ == "__main__":
     patch_android()

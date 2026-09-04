@@ -94,17 +94,12 @@ jobs:
           # 解決 Kotlin stdlib-jdk7 / stdlib-jdk8 與 kotlin-stdlib 重複類別衝突 (AGP checkDebugDuplicateClasses)
           python3 scripts/patch_android_build.py
 
-      - name: Build Android APK (Gradle)
+      - name: Build Android Release APK (Gradle)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Sign APK with Fixed Keystore
-        run: |
-          # 使用固定金鑰簽名 (alias: mykey, pass: 123456)，確保使用者裝置原地升級免重裝
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore singstudio.keystore -storepass 123456 -keypass 123456 android/app/build/outputs/apk/debug/app-debug.apk mykey
-          cp android/app/build/outputs/apk/debug/app-debug.apk SingStudio-Android.apk
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../SingStudio-Android.apk
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4

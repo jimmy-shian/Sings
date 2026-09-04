@@ -3,10 +3,17 @@ temp_recordings/
 *.webm
 *.wav
 
-# 本機編譯輸出
+# 本機編譯與套件暫存
 dist/
 build/
 *.spec
+android/
+www/
+node_modules/
+*.apk
+package.json
+package-lock.json
+capacitor.config.json
 
 # Python 快取
 __pycache__/
