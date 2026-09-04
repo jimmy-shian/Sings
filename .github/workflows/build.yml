@@ -2,6 +2,8 @@ name: Build & Release SingStudio (EXE & APK)
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -88,6 +90,38 @@ jobs:
           # 加入麥克風錄音與音訊設定權限 (Capacitor 已內建 INTERNET 權限，避免重複宣告警告)
           sed -i '/<manifest/a \    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' android/app/src/main/AndroidManifest.xml
           npx cap sync android
+
+          # 解決 Kotlin stdlib-jdk7 / stdlib-jdk8 與 kotlin-stdlib 重複類別衝突 (AGP checkDebugDuplicateClasses)
+          # 1. 於全域 build.gradle 排除舊版 jdk7 / jdk8 模組
+          cat << 'EOF' >> android/build.gradle
+
+allprojects {
+    configurations.all {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
+}
+EOF
+
+          # 2. 於 app/build.gradle 強制排除並宣告約束對齊 Kotlin 依賴版本
+          cat << 'EOF' >> android/app/build.gradle
+
+configurations.all {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+
+dependencies {
+    constraints {
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22") {
+            because("kotlin-stdlib-jdk7 is now part of kotlin-stdlib")
+        }
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22") {
+            because("kotlin-stdlib-jdk8 is now part of kotlin-stdlib")
+        }
+    }
+}
+EOF
 
       - name: Build Android APK (Gradle)
         run: |
