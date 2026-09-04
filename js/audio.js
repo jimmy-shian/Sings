@@ -244,14 +244,20 @@ class AudioEngine {
   setLiveBackingVolume(vol) {
     this.liveBackingVolume = Math.max(0, Math.min(1.5, vol));
     this.backingVolume = this.liveBackingVolume; // 同步做為後製混音與導出的預設音量
-    if (this.sourceMode === 'youtube' && window.youtubeManager) {
+
+    // 1. YouTube 伴奏即時音量 (0~100)
+    if (window.youtubeManager) {
       window.youtubeManager.setVolume(this.liveBackingVolume * 100);
-    } else {
-      if (this.backingGainNode) {
-        this.backingGainNode.gain.value = this.liveBackingVolume;
-      } else if (this.backingAudio) {
-        this.backingAudio.volume = Math.max(0, Math.min(1.0, this.liveBackingVolume));
+    }
+
+    // 2. 本地/示範伴奏 Web Audio 節點與 HTML5 Audio
+    if (this.backingGainNode) {
+      this.backingGainNode.gain.value = this.liveBackingVolume;
+      if (this.backingAudio) {
+        this.backingAudio.volume = 1.0;
       }
+    } else if (this.backingAudio) {
+      this.backingAudio.volume = Math.max(0, Math.min(1.0, this.liveBackingVolume));
     }
   }
 
@@ -394,6 +400,8 @@ class AudioEngine {
     }
 
     this.sourceMode = 'local';
+    this.initBackingAudioNodes();
+    this.setLiveBackingVolume(this.liveBackingVolume);
     return this.backingDuration;
   }
 
@@ -453,6 +461,8 @@ class AudioEngine {
     }
 
     this.sourceMode = 'demo';
+    this.initBackingAudioNodes();
+    this.setLiveBackingVolume(this.liveBackingVolume);
     return duration;
   }
 

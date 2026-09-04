@@ -25,6 +25,7 @@ class YouTubeManager {
 
     // 播放追蹤定時器
     this.syncTimer = null;
+    this.volume = 100;
 
     this.initApi();
   }
@@ -85,6 +86,7 @@ class YouTubeManager {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
       this.syncTimer = null;
+    this.volume = 100;
     }
     this.isPlaying = false;
   }
@@ -113,6 +115,9 @@ class YouTubeManager {
         events: {
           onReady: (event) => {
             console.log('YouTube Player 載入完成');
+            if (this.player && typeof this.player.setVolume === 'function') {
+              this.player.setVolume(this.volume);
+            }
             setTimeout(() => this.checkDuration(), 800);
           },
           onStateChange: (event) => {
@@ -137,6 +142,9 @@ class YouTubeManager {
       });
     } else {
       this.player.cueVideoById(videoId);
+      if (typeof this.player.setVolume === 'function') {
+        this.player.setVolume(this.volume);
+      }
       setTimeout(() => this.checkDuration(), 800);
     }
   }
@@ -268,9 +276,20 @@ class YouTubeManager {
     return this.duration;
   }
 
-  setVolume(vol0to1) {
+  setVolume(vol) {
+    let v = Number(vol);
+    if (isNaN(v)) return;
+    // 支援傳入小數 0~1.5 或 百分比 0~150
+    if (v > 0 && v <= 1.5) {
+      v = v * 100;
+    }
+    this.volume = Math.max(0, Math.min(100, Math.round(v)));
     if (this.player && typeof this.player.setVolume === 'function') {
-      this.player.setVolume(Math.round(vol0to1 * 100));
+      try {
+        this.player.setVolume(this.volume);
+      } catch (e) {
+        console.warn('YouTube setVolume error:', e);
+      }
     }
   }
 }
