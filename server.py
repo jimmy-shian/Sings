@@ -32,13 +32,13 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 def get_app_version():
     try:
-        ver_path = os.path.join(DIRECTORY, "version.json")
+        ver_path = os.path.join(DIRECTORY, "package.json")
         if os.path.exists(ver_path):
             with open(ver_path, "r", encoding="utf-8") as f:
-                return json.load(f).get("version", "0.0.2")
+                return json.load(f).get("version", "1.0.0")
     except Exception:
         pass
-    return "0.0.2"
+    return "1.0.0"
 
 APP_VERSION = get_app_version()
 

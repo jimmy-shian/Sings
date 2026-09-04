@@ -1,9 +1,9 @@
 /**
  * SingStudio 統一版本配置中心 (Single Source of Truth)
- * 唯一版本源為根目錄的 version.json，所有模組均由此引用
+ * 唯一版本源為根目錄的 package.json，所有模組均由此引用
  */
 (function() {
-  const DEFAULT_VERSION = '0.0.2';
+  const DEFAULT_VERSION = '1.0.0';
   window.APP_VERSION = DEFAULT_VERSION;
 
   function updateDomVersion(ver) {
@@ -14,8 +14,8 @@
     titles.forEach(el => el.textContent = 'v' + ver);
   }
 
-  // 嘗試動態獲取 version.json
-  fetch('/version.json')
+  // 嘗試動態獲取 package.json
+  fetch('/package.json')
     .then(res => res.json())
     .then(data => {
       if (data && data.version) {

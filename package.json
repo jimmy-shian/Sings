@@ -1,0 +1,14 @@
+{
+  "name": "sings",
+  "version": "1.0.0",
+  "description": "SingStudio 專業雙軌音訊工作站",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo Web assets in www"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  }
+}
