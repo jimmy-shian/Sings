@@ -54,16 +54,22 @@ SingStudio 是一套以 **Local-First（本機優先）** 與 **OpenDesign 極�
 
 ## 快速啟動指南
 
-### 方式一：直接執行已編譯之 Windows 執行檔
-進入 `dist/SingStudio/` 目錄，直接雙擊 `SingStudio.exe` 即可啟動。
+### 方式一：直接執行 Windows 原生桌面應用程式 (免安裝 / 安裝版)
+本架構已升級為 **Electron 原生視窗應用程式**，雙擊即可直接啟動桌面視窗（無須開啟本地瀏覽器）：
+- **免安裝單一執行檔**：直接執行 `dist/SingStudio-Windows-x64.exe` 或 `singstudio-react/release/win-unpacked/SingStudio.exe`。
+- **標準安裝版**：執行 `dist/SingStudio-Setup-*.exe`。
 
-### 方式二：本機 Python 執行
+### 方式二：React + Electron 開發模式
 ```powershell
-# 啟動伺服器 (Windows)
-C:\Users\Administrator\venv\Scripts\python.exe server.py
+cd singstudio-react
+npm run electron:dev
+```
+即刻啟動 Vite 本地開發熱重載 (HMR) 並自動掛載 Electron 原生視窗。
 
-# 或標準環境
-python server.py
+### 方式三：舊版 Python Server (相容備用)
+```powershell
+C:\Users\Administrator\venv\Scripts\python.exe server.py
+# 或 python server.py
 ```
 開啟瀏覽器訪問：`http://localhost:8088`
 
@@ -71,23 +77,81 @@ python server.py
 
 ## 本機編譯與打包 (Build EXE & APK)
 
-### 1. 本機編譯 Windows 免安裝 EXE
-本專案提供一鍵打包腳本：
+### 1. 本機編譯 Windows 原生桌面執行檔 (EXE)
+本專案提供一鍵打包腳本，自動調度 TypeScript、Vite 與 `electron-builder`：
 ```powershell
+# 方式一：一鍵 Python 建置腳本 (推薦)
+C:\Users\Administrator\venv\Scripts\python.exe build_exe.py
+# 或通用環境
 python build_exe.py
-```
-編譯完成後，免安裝執行檔將產生於 `dist/SingStudio/SingStudio.exe`。
 
-### 2. GitHub Actions 自動編譯發佈 (EXE & APK)
-本專案已配置完整 CI/CD 工作流程 (`.github/workflows/build.yml`)：
-- 只要推送版本標籤（例如 `v0.0.1`）至 GitHub：
+# 方式二：直接使用 NPM 指令
+cd singstudio-react
+npm run electron:build
+```
+編譯完成後，產物將自動輸出至 `dist/` 目錄：
+- `dist/SingStudio-Windows-x64.exe`：**免安裝單一獨立執行檔**（直接雙擊即可啟動原生視窗，無須安裝與本地伺服器）。
+- `dist/SingStudio-Setup-1.0.0.exe`：**標準 NSIS 安裝程式**（自動建立桌面圖示與開始功能表捷徑）。
+- `singstudio-react/release/win-unpacked/SingStudio.exe`：免安裝綠色解壓版目錄。
+
+### 2. 本機編譯 Android 安裝套件 (APK)
+本專案整合 Capacitor 跨平台框架與 Android Gradle 雙重簽名機制：
+
+#### 前置環境要求：
+- **Node.js**：v20+
+- **JDK**：Java 21 (推薦 Temurin 21)
+- **Android SDK**：具備 `build-tools` 與 `platforms;android-34`（或設有 `ANDROID_HOME`）
+
+#### 本機一鍵建置：
+```powershell
+# 執行一鍵 APK 建置腳本
+C:\Users\Administrator\venv\Scripts\python.exe build_apk.py
+# 或通用環境
+python build_apk.py
+```
+
+#### 手動逐步建置流程：
+```bash
+# 1. 編譯 React 前端網頁資產
+cd singstudio-react
+npm run build:web
+cd ..
+
+# 2. 同步前端資產至 www/ 目錄
+rm -rf www && mkdir -p www
+cp -r singstudio-react/dist/* www/
+cp -r singstudio-react/public/assets www/ 2>/dev/null || true
+
+# 3. 執行 Capacitor 同步
+npx cap sync android
+
+# 4. 套用 Gradle 依賴修補並注入發行簽名密鑰
+python scripts/patch_android_build.py
+
+# 5. 編譯正式 Release APK
+cd android
+./gradlew assembleRelease --no-daemon      # Linux / macOS
+gradlew.bat assembleRelease --no-daemon    # Windows
+```
+
+#### 簽名與安裝說明：
+- **內建簽名密鑰**：專案已自帶發行金鑰 `singstudio.keystore`（別名 `mykey` / 密碼 `123456`），腳本會自動配置 **APK Signature Scheme v1 與 v2 雙重簽名**，產出之 APK 可直接在實體 Android 手機/平板正常安裝。
+- **安裝至實機**：
   ```bash
-  git tag -a v0.0.1 -m "Release v0.0.1"
-  git push origin v0.0.1
+  adb install dist/SingStudio-Android.apk
   ```
-- GitHub Actions 將自動在雲端矩陣中建置：
-  1. **Windows 執行檔**：`SingStudio-Windows-x64.exe`
-  2. **Android 安裝包**：`SingStudio-Android.apk`
+  或直接透過 USB / 通訊軟體將 APK 傳輸至手機點擊安裝。
+
+### 3. GitHub Actions 雲端自動編譯發佈 (EXE & APK)
+本專案配置企業級 CI/CD 工作流程 (`.github/workflows/build.yml`)：
+- 推送版本標籤（例如 `v1.0.0`）或於 GitHub Actions 頁面手動點擊 `Run workflow`：
+  ```bash
+  git tag -a v1.0.0 -m "Release v1.0.0"
+  git push origin v1.0.0
+  ```
+- GitHub Actions 自動在雲端環境矩陣中建置：
+  1. **Windows 原生桌面檔**：`SingStudio-Windows-x64.exe` (Portable) 與 `SingStudio-Setup-*.exe` (Installer)。
+  2. **Android 安裝包**：`SingStudio-Android.apk` (已內建正式 keystore 簽名與麥克風權限)。
 - 建置完成後自動發佈至 GitHub Release 頁面供隨時下載！
 
 ---
@@ -96,26 +160,23 @@ python build_exe.py
 
 ```text
 Sings/
+├── singstudio-react/        # 【現代架構】React 19 + TypeScript + Electron 44 桌面工作站
+│   ├── electron/            # Electron 主進程與 Preload 安全橋接
+│   ├── src/                 # React 元件、Web Audio Hooks、Canvas 時間軸
+│   ├── package.json         # 單一版本來源、依賴與 electron-builder 設定
+│   └── vite.config.ts       # Vite + Electron 編譯設定
 ├── .github/
 │   └── workflows/
-│       └── build.yml        # CI/CD 自動構建發佈 EXE 與 APK 工作流程
-├── css/
-│   └── style.css            # OpenDesign 現代石墨灰高對比樣式與響應式排版
-├── js/
-│   ├── app.js               # 主應用調度器 (快捷鍵、雙時間軸、Takes管理、生命週期)
-│   ├── audio.js             # 雙軌音訊工作站核心 (電平抓取、temp_ 暫存、接續錄製、WAV 渲染)
-│   ├── lyrics.js            # LRC 同步動態歌詞解析、位移校準與 LRCLIB API
-│   ├── scoring.js           # 視覺化相容模組
-│   ├── storage.js           # IndexedDB 本機儲存保護引擎
-│   ├── timeline.js          # 專業雙軌時間軸引擎 (滾輪縮放、平移、磁鐵吸附、Takes裁剪)
-│   ├── utils.js             # 時間格式化、位元組轉換與複製工具
-│   └── youtube.js           # YouTube IFrame API 整合模組 (自動時長、25 FPS 同步)
-├── temp_recordings/         # 運行時錄音分段磁碟暫存 (由 .gitignore 排除)
-├── .gitignore               # Git 版本忽略規則 (排除暫存與編譯產物)
-├── build_exe.py             # 本機 Windows Standalone EXE 一鍵打包腳本
-├── index.html               # 核心使用者介面
-├── README.md                # 專案操作說明與技術手冊
-└── server.py                # 輕量本機 HTTP 伺服器 (靜態檔案、YT 代理、temp_ 磁碟儲存)
+│       └── build.yml        # CI/CD 自動構建發佈 EXE (Electron) 與 APK (Capacitor)
+├── android/                 # Android 原生專案配置與簽名檔
+├── scripts/
+│   └── patch_android_build.py # Android Gradle 依賴衝突與簽名自動修補腳本
+├── css/                     # 【相容歷史】舊版樣式庫
+├── js/                      # 【相容歷史】舊版 Vanilla JS 音訊與時間軸模組
+├── build_exe.py             # 一鍵編譯 Windows Standalone EXE 智慧腳本
+├── singstudio.keystore      # Android 正式發行固定密鑰簽名庫
+├── README.md                # 專案完整操作說明與技術手冊
+└── server.py                # 舊版 Python HTTP 伺服器 (供相容模式使用)
 ```
 
 ---
