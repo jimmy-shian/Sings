@@ -241,10 +241,21 @@
                 <svg class="icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
                 <span id="lblMonitorStatus">🎧 即時耳返: 關</span>
               </button>
-              <div id="boxMonitorVol" style="display: none; align-items: center; gap: 6px;">
-                <span class="live-tool-lbl" style="font-size: 13px;">耳返:</span>
-                <input type="range" id="sliderLiveMonitorVol" class="range-input-sm" min="0" max="150" value="100" title="即時耳返人聲音量 (0~150%)">
-                <span id="lblLiveMonitorVol" class="vol-badge">100%</span>
+              <div id="boxMonitorVol" style="display: none; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="live-tool-lbl" style="font-size: 13px;">耳返:</span>
+                  <input type="range" id="sliderLiveMonitorVol" class="range-input-sm" min="0" max="150" value="100" title="即時耳返人聲音量 (0~150%)">
+                  <span id="lblLiveMonitorVol" class="vol-badge">100%</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span class="live-tool-lbl" style="font-size: 13px;" title="調節麥克風收音靈敏度，若環境雜音多可調低 (預設 85%)">靈敏度:</span>
+                  <input type="range" id="sliderMicSensitivity" class="range-input-sm" min="10" max="150" value="85" title="調節麥克風輸入靈敏度 (10%~150%)">
+                  <span id="lblMicSensitivity" class="vol-badge">85%</span>
+                </div>
+                <label class="toggle-control" title="85Hz 高通濾波，過濾冷氣與環境低頻風噪" style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+                  <input type="checkbox" id="chkNoiseFilter" checked style="accent-color: var(--accent); cursor: pointer;">
+                  <span style="color: var(--text-muted);">降噪</span>
+                </label>
               </div>
             </div>
           </div>

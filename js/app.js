@@ -93,6 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
     boxMonitorVol: document.getElementById('boxMonitorVol'),
     sliderLiveMonitorVol: document.getElementById('sliderLiveMonitorVol'),
     lblLiveMonitorVol: document.getElementById('lblLiveMonitorVol'),
+    sliderMicSensitivity: document.getElementById('sliderMicSensitivity'),
+    lblMicSensitivity: document.getElementById('lblMicSensitivity'),
+    chkNoiseFilter: document.getElementById('chkNoiseFilter'),
 
     // 錄音操作按鈕 (支援接續錄製)
     btnRecordStart: document.getElementById('btnRecordStart'),
@@ -812,6 +815,23 @@ document.addEventListener('DOMContentLoaded', () => {
       const vol = parseFloat(e.target.value) / 100;
       audioEngine.setMonitorVolume(vol);
       el.lblLiveMonitorVol.textContent = `${Math.round(vol * 100)}%`;
+    });
+  }
+
+  // 麥克風靈敏度調節
+  if (el.sliderMicSensitivity) {
+    el.sliderMicSensitivity.addEventListener('input', (e) => {
+      const sens = parseFloat(e.target.value) / 100;
+      audioEngine.setMicSensitivity(sens);
+      el.lblMicSensitivity.textContent = `${Math.round(sens * 100)}%`;
+    });
+  }
+
+  // 85Hz 環境雜音過濾開關
+  if (el.chkNoiseFilter) {
+    el.chkNoiseFilter.addEventListener('change', (e) => {
+      audioEngine.setNoiseFilter(e.target.checked);
+      UI.toast(e.target.checked ? '已開啟 85Hz 環境雜音過濾' : '已關閉環境雜音過濾 (原生動態)', 'info');
     });
   }
 

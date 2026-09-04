@@ -63,7 +63,11 @@ class AudioEngine {
     // 即時耳返監聽 (Direct Monitoring) 參數
     this.isMonitoringEnabled = false;
     this.monitorVolume = 1.0;
+    this.micSensitivity = 0.85; // 麥克風靈敏度 (預設 85%，可降低雜音)
+    this.isNoiseFilterEnabled = true; // 85Hz 低頻風噪過濾
     this.micSourceNode = null;
+    this.micGainNode = null;
+    this.noiseFilterNode = null;
     this.monitorGainNode = null;
 
     // 方案 2: Web Audio 即時消音/去除中置人聲 (Center Channel Cancellation / OOPS)
@@ -81,7 +85,18 @@ class AudioEngine {
   async ensureAudioContext() {
     if (!this.audioCtx) {
       const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new AudioCtxClass();
+      try {
+        this.audioCtx = new AudioCtxClass({
+          latencyHint: 'interactive',
+          sampleRate: 48000
+        });
+      } catch (e) {
+        try {
+          this.audioCtx = new AudioCtxClass({ latencyHint: 'interactive' });
+        } catch (err) {
+          this.audioCtx = new AudioCtxClass();
+        }
+      }
     }
     if (this.audioCtx.state === 'suspended') {
       await this.audioCtx.resume();
@@ -214,7 +229,16 @@ class AudioEngine {
           echoCancellation: false, // 建議戴耳機，保留原生動態
           noiseSuppression: false,
           autoGainControl: false,
-          latency: 0
+          channelCount: 1,
+          latency: 0,
+          sampleRate: 48000,
+          // 關閉 Chromium 底層 WebRTC 軟體 DSP 緩衝管線，直接接管硬體原生音訊，實現極限超低延遲
+          googEchoCancellation: false,
+          googAutoGainControl: false,
+          googNoiseSuppression: false,
+          googHighpassFilter: false,
+          googTypingNoiseDetection: false,
+          googAudioMirroring: false
         },
         video: false
       });
@@ -236,6 +260,45 @@ class AudioEngine {
       console.error('麥克風存取失敗:', err);
       throw new Error('無法存取麥克風，請檢查瀏覽器麥克風權限並使用耳機。');
     }
+  }
+
+  /**
+   * 更新耳返音訊過濾路由
+   */
+  updateMonitorRouting() {
+    if (!this.micGainNode || !this.monitorGainNode || !this.noiseFilterNode) return;
+    try {
+      this.micGainNode.disconnect(this.monitorGainNode);
+      this.micGainNode.disconnect(this.noiseFilterNode);
+      this.noiseFilterNode.disconnect(this.monitorGainNode);
+
+      if (this.isNoiseFilterEnabled) {
+        this.micGainNode.connect(this.noiseFilterNode);
+        this.noiseFilterNode.connect(this.monitorGainNode);
+      } else {
+        this.micGainNode.connect(this.monitorGainNode);
+      }
+    } catch (e) {
+      // 忽略初次未連接時的 disconnect 警告
+    }
+  }
+
+  /**
+   * 設定麥克風輸入靈敏度 (0.1 ~ 1.5, 預設 0.85)
+   */
+  setMicSensitivity(val) {
+    this.micSensitivity = Math.max(0.05, Math.min(2.0, val));
+    if (this.micGainNode) {
+      this.micGainNode.gain.value = this.micSensitivity;
+    }
+  }
+
+  /**
+   * 開啟或關閉耳返雜音高通濾波
+   */
+  setNoiseFilter(enabled) {
+    this.isNoiseFilterEnabled = !!enabled;
+    this.updateMonitorRouting();
   }
 
   /**
