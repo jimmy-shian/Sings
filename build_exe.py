@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SingStudio - 本機 EXE 編譯建置腳本 (Windows Standalone Executable Builder)
-使用 PyInstaller 將 server.py 與靜態資源 (index.html, css/, js/) 一鍵編譯為執行檔 dist/SingStudio/SingStudio.exe
+SingStudio - 本機 EXE 編譯建置腳本 (React + Electron 桌面應用程式)
+使用 electron-builder 將 React 19 + TypeScript + Electron 應用程式編譯為原生 Windows 執行檔
 """
 
 import os
@@ -20,44 +20,63 @@ if sys.platform == 'win32':
 
 def build():
     print("==================================================")
-    print("SingStudio - 開始編譯 Windows Standalone EXE")
+    print("SingStudio - 開始編譯 Windows Standalone EXE (Electron)")
     print("==================================================")
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    dist_dir = os.path.join(base_dir, "dist")
-    build_dir = os.path.join(base_dir, "build")
+    react_dir = os.path.join(base_dir, "singstudio-react")
 
-    # 確保虛擬環境中的 pyinstaller
-    pyinstaller_cmd = "pyinstaller"
-    venv_pyinstaller = os.path.join(os.path.dirname(sys.executable), "pyinstaller.exe")
-    if os.path.exists(venv_pyinstaller):
-        pyinstaller_cmd = venv_pyinstaller
+    if not os.path.exists(os.path.join(react_dir, "package.json")):
+        print(f"[ERROR] 找不到 React 專案目錄: {react_dir}")
+        sys.exit(1)
 
-    # 組合 PyInstaller 參數
-    cmd = [
-        pyinstaller_cmd,
-        "--noconfirm",
-        "--onedir",
-        "--name", "SingStudio",
-        "--add-data", f"index.html{os.pathsep}.",
-        "--add-data", f"css{os.pathsep}css",
-        "--add-data", f"js{os.pathsep}js",
-        "server.py"
-    ]
-
-    print(f"執行指令: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=base_dir)
-
-    if result.returncode == 0:
-        exe_path = os.path.join(dist_dir, "SingStudio", "SingStudio.exe")
-        print("\n==================================================")
-        print("[OK] 編譯成功！")
-        print(f"執行檔位置: {exe_path}")
-        print("使用者可直接雙擊 SingStudio.exe 啟動工作站！")
-        print("==================================================")
+    # 步驟 1: 檢查並安裝 npm 依賴
+    node_modules_dir = os.path.join(react_dir, "node_modules")
+    if not os.path.exists(node_modules_dir):
+        print("\n[1/3] 正在安裝 npm 依賴...")
+        result = subprocess.run(["npm", "install"], cwd=react_dir, shell=True)
+        if result.returncode != 0:
+            print("[FAIL] npm install 失敗")
+            sys.exit(result.returncode)
     else:
-        print("\n[FAIL] 編譯失敗，請檢查錯誤輸出。")
+        print("\n[1/3] npm 依賴已就緒。")
+
+    # 步驟 2: 建置 React + Electron 桌面應用
+    print("\n[2/3] 正在建置 React 前端並透過 electron-builder 打包...")
+    result = subprocess.run(["npm", "run", "electron:build"], cwd=react_dir, shell=True)
+    if result.returncode != 0:
+        print("[FAIL] 建置失敗")
         sys.exit(result.returncode)
+
+    # 步驟 3: 複製建置產物至根目錄 dist/
+    print("\n[3/3] 正在整理發行執行檔...")
+    release_dir = os.path.join(react_dir, "release")
+    dist_dir = os.path.join(base_dir, "dist")
+    os.makedirs(dist_dir, exist_ok=True)
+
+    copied = []
+    if os.path.exists(release_dir):
+        for item in os.listdir(release_dir):
+            item_path = os.path.join(release_dir, item)
+            if os.path.isfile(item_path) and item.lower().endswith('.exe'):
+                dest_path = os.path.join(dist_dir, item)
+                shutil.copy2(item_path, dest_path)
+                copied.append(item)
+                print(f"  已導出: {item} -> {dest_path}")
+
+    # 如果有解包目錄，也提供捷徑資訊
+    unpacked_dir = os.path.join(release_dir, "win-unpacked")
+    unpacked_exe = os.path.join(unpacked_dir, "SingStudio.exe")
+
+    print("\n==================================================")
+    print("[OK] 編譯完成！")
+    if copied:
+        for f in copied:
+            print(f"獨立安裝/可攜執行檔: {os.path.join(dist_dir, f)}")
+    if os.path.exists(unpacked_exe):
+        print(f"免安裝綠色解壓版: {unpacked_exe}")
+    print("使用者直接雙擊 EXE 即可啟動原生桌面視窗，無須啟動本地瀏覽器！")
+    print("==================================================")
 
 if __name__ == "__main__":
     build()

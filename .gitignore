@@ -11,14 +11,20 @@ android/
 www/
 node_modules/
 *.apk
-package.json
-package-lock.json
-capacitor.config.json
+/package-lock.json
+
+# React 專案編譯產物與依賴
+singstudio-react/dist/
+singstudio-react/dist-electron/
+singstudio-react/release/
+singstudio-react/node_modules/
 
 # Python 快取
 __pycache__/
 *.pyc
 
-# 作業系統暫存
+# 作業系統與臨時暫存
 .DS_Store
 Thumbs.db
+.kilocode/
+scratch/
