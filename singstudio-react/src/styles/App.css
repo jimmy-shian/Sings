@@ -919,3 +919,340 @@ body {
   background: var(--accent);
   color: white;
 }
+
+/* ========== 作品庫表格 (Base & Desktop) ========== */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  text-align: left;
+}
+
+.data-table th {
+  padding: 12px 14px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease;
+}
+
+.data-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.data-table .table-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.data-table .table-actions-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.data-table .table-actions-group {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.data-table .table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 28px 14px;
+}
+
+/* ==========================================================================
+   行動端 / 小螢幕響應式適配 (@media max-width: 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* 頂部導航列：隱藏冗長標語，緊湊品牌與版本號，杜絕右側垂直單字擠壓 */
+  .top-nav {
+    padding: max(10px, var(--sat)) 14px 10px 14px;
+    gap: 8px;
+  }
+
+  .nav-hint {
+    display: none !important;
+  }
+
+  .logo {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .logo-text {
+    font-size: 16px;
+  }
+
+  .badge-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* 主內容容器邊距 */
+  .main-content {
+    padding: 10px max(10px, var(--sal)) max(24px, calc(12px + var(--sab))) max(10px, var(--sar));
+    gap: 12px;
+  }
+
+  /* 伴奏來源切換頁籤：橫向平滑滑動，不折行 */
+  .tab-group {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    gap: 6px;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  /* 音軌狀態列：垂直堆疊，按鈕寬度撐滿，文字不重疊 */
+  .track-status-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .track-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .track-title-text {
+    white-space: normal;
+    word-break: break-word;
+    font-size: 14px;
+  }
+
+  .track-meta {
+    white-space: normal;
+    word-break: break-word;
+    font-size: 12px;
+  }
+
+  .track-actions {
+    width: 100%;
+  }
+
+  .track-actions .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px;
+  }
+
+  /* 工作區網格改為單欄 */
+  .workspace-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  /* 音訊測量資訊列垂直展開 */
+  .audio-metrics-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .metric-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .metric-group.flex-1 {
+    flex: none;
+    width: 100%;
+  }
+
+  /* 即時工具列 */
+  .live-audio-toolbar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .live-tool-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .live-tool-item {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .live-tool-item .range-input-sm {
+    flex: 1;
+    max-width: 160px;
+  }
+
+  .monitor-controls-box {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  /* 錄音操作按鈕列：垂直滿寬，便於觸控 */
+  .action-bar {
+    flex-direction: column;
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .action-bar .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  /* Takes 管理清單 */
+  .takes-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .take-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .take-info {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .take-actions {
+    width: 100%;
+  }
+
+  .take-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* 作品庫表格卡片化 (杜絕單字垂直擠壓崩潰) */
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .data-table tr {
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+
+  .data-table td {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13.5px;
+    text-align: right;
+  }
+
+  .data-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 13px;
+    text-align: left;
+    padding-right: 12px;
+    flex-shrink: 0;
+  }
+
+  .data-table td.table-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+    display: block;
+    text-align: left;
+  }
+
+  .data-table td.table-title::before {
+    display: none;
+  }
+
+  .data-table td.table-actions-cell {
+    border-bottom: none;
+    padding-top: 10px;
+    justify-content: flex-end;
+  }
+
+  .data-table .table-actions-group {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .data-table .table-actions-group .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* 彈出視窗行動端縮減 padding 與滿寬按鈕 */
+  .modal-overlay {
+    padding: 8px !important;
+  }
+
+  .modal-card {
+    max-height: 96vh !important;
+    border-radius: var(--radius-md) !important;
+  }
+
+  .modal-header {
+    padding: 12px 14px !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .modal-body {
+    padding: 14px 12px !important;
+  }
+
+  .modal-footer {
+    padding: 12px 14px !important;
+    flex-direction: column !important;
+  }
+
+  .modal-footer .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}

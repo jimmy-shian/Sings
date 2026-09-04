@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import type { VocalTake, TimelineContextMenuInfo } from '../types';
 
 interface TimelineCanvasProps {
@@ -85,19 +85,21 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
     return { snappedTime: closest, isSnapped };
   }, [vocalTakes]);
 
-  const getTickInterval = (visibleDur: number): number => {
-    if (visibleDur <= 5) return 0.5;
-    if (visibleDur <= 15) return 1;
-    if (visibleDur <= 30) return 2;
-    if (visibleDur <= 60) return 5;
-    if (visibleDur <= 180) return 10;
-    if (visibleDur <= 360) return 30;
-    return 60;
+  const getTickInterval = (visibleDur: number, canvasWidth: number): number => {
+    const minPixelPerTick = 80;
+    const maxTicks = Math.max(2, Math.floor(canvasWidth / minPixelPerTick));
+    const idealStep = visibleDur / maxTicks;
+    const stepChoices = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+    return stepChoices.find((s) => s >= idealStep) || 60;
   };
 
-  const formatTime = (sec: number): string => {
+  const formatTime = (sec: number, step: number): string => {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
+    if (step < 1) {
+      const ms = Math.floor((sec % 1) * 10);
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+    }
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
@@ -115,22 +117,25 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
     ctx.fillRect(0, 0, width, height);
 
     const visibleDur = getVisibleDuration();
-    const tickInterval = getTickInterval(visibleDur);
-    const firstTick = Math.floor(viewStartTime / tickInterval) * tickInterval;
+    const tickInterval = getTickInterval(visibleDur, width);
+    const firstTickIndex = Math.floor(viewStartTime / tickInterval);
+    const lastTickIndex = Math.ceil((viewStartTime + visibleDur) / tickInterval);
 
     ctx.strokeStyle = '#323644';
     ctx.fillStyle = '#8b92a5';
     ctx.font = '11px "JetBrains Mono", Consolas, monospace';
     ctx.lineWidth = 1;
 
-    for (let t = firstTick; t <= viewStartTime + visibleDur; t += tickInterval) {
+    for (let i = firstTickIndex; i <= lastTickIndex; i++) {
+      const t = Math.round(i * tickInterval * 100) / 100;
+      if (t < 0) continue;
       const x = timeToX(t, width);
       if (x >= 0 && x <= width) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
-        ctx.fillText(formatTime(t), x + 4, 13);
+        ctx.fillText(formatTime(t, tickInterval), Math.max(4, Math.min(width - 38, x + 4)), 13);
       }
     }
 

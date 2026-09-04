@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import type { VocalTake } from '../types';
 import { TimelineCanvas } from './TimelineCanvas';
 import { useTimeline } from '../hooks/useTimeline';
@@ -117,6 +117,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         }}
       >
         <div
+          className="modal-header"
           style={{
             padding: '16px 24px',
             borderBottom: '1px solid var(--border)',
@@ -140,7 +141,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           </button>
         </div>
 
-        <div style={{ padding: '20px 24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="modal-body" style={{ padding: '20px 24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
               雙軌同步時間軸可視化
@@ -346,6 +347,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         </div>
 
         <div
+          className="modal-footer"
           style={{
             padding: '16px 24px',
             borderTop: '1px solid var(--border)',

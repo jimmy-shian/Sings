@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import type { Recording } from '../types';
 
 interface LibraryTableProps {
@@ -34,55 +34,49 @@ export const LibraryTable: React.FC<LibraryTableProps> = ({
         </button>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
+      <div className="table-responsive">
+        <table className="data-table">
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-              <th style={{ padding: '12px 14px' }}>作品名稱</th>
-              <th style={{ padding: '12px 14px' }}>時長</th>
-              <th style={{ padding: '12px 14px' }}>片段數</th>
-              <th style={{ padding: '12px 14px' }}>檔案大小</th>
-              <th style={{ padding: '12px 14px' }}>錄製時間</th>
-              <th style={{ padding: '12px 14px' }}>延遲補償</th>
-              <th style={{ padding: '12px 14px', textAlign: 'right' }}>操作</th>
+            <tr>
+              <th>作品名稱</th>
+              <th>時長</th>
+              <th>片段數</th>
+              <th>檔案大小</th>
+              <th>錄製時間</th>
+              <th>延遲補償</th>
+              <th style={{ textAlign: 'right' }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {recordings.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 14px' }}>
+                <td colSpan={7} className="table-empty">
                   暫無本地作品。錄音完成後，可於後製混音視窗中點選「保存至本機作品庫」。
                 </td>
               </tr>
             ) : (
               recordings.map((rec) => (
-                <tr
-                  key={rec.id}
-                  style={{
-                    borderBottom: '1px solid var(--border-subtle)',
-                    transition: 'background-color 0.15s ease',
-                  }}
-                >
-                  <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <tr key={rec.id}>
+                  <td className="table-title" data-label="作品名稱">
                     {rec.title}
                   </td>
-                  <td style={{ padding: '12px 14px', fontFamily: 'var(--font-mono)' }}>
+                  <td data-label="時長" style={{ fontFamily: 'var(--font-mono)' }}>
                     {formatDuration(rec.duration)}
                   </td>
-                  <td style={{ padding: '12px 14px' }}>
+                  <td data-label="片段數">
                     {rec.takesCount || 1} 段
                   </td>
-                  <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
+                  <td data-label="檔案大小">
                     {rec.sizeFormatted || '0 B'}
                   </td>
-                  <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  <td data-label="錄製時間">
                     {rec.dateString}
                   </td>
-                  <td style={{ padding: '12px 14px', fontFamily: 'var(--font-mono)' }}>
+                  <td data-label="延遲補償" style={{ fontFamily: 'var(--font-mono)' }}>
                     {rec.latencyOffset || 0} ms
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '8px' }}>
+                  <td data-label="操作" className="table-actions-cell">
+                    <div className="table-actions-group">
                       <button
                         className="btn btn-sm btn-primary"
                         type="button"
