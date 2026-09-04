@@ -11,34 +11,43 @@ permissions:
 
 jobs:
   # ==========================================================================
-  # 1. 編譯 Windows 單一執行檔 (.exe)
+  # 1. 編譯 Windows 原生桌面執行檔 (Electron)
   # ==========================================================================
   build-windows:
-    name: Build Windows Standalone EXE
+    name: Build Windows Standalone EXE & Setup
     runs-on: windows-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: singstudio-react/package-lock.json
 
-      - name: Install PyInstaller
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
+      - name: Install Dependencies
+        working-directory: singstudio-react
+        run: npm ci
 
-      - name: Compile Standalone Windows EXE
-        run: |
-          pyinstaller --noconfirm --onefile --name "SingStudio-Windows-x64" --add-data "index.html;." --add-data "css;css" --add-data "js;js" --add-data "version.json;." server.py
+      - name: Build Windows Standalone & Installer (electron-builder)
+        working-directory: singstudio-react
+        run: npm run electron:build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Windows Artifact
+      - name: Upload Windows Standalone Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SingStudio-Windows-x64
-          path: dist/SingStudio-Windows-x64.exe
+          path: singstudio-react/release/SingStudio-Windows-x64.exe
+
+      - name: Upload Windows Setup Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SingStudio-Windows-Setup
+          path: singstudio-react/release/SingStudio-Setup-*.exe
 
   # ==========================================================================
   # 2. 編譯 Android 安裝套件 (.apk)
@@ -64,14 +73,18 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Build React Web App
+        working-directory: singstudio-react
+        run: |
+          npm ci
+          npm run build:web
+
       - name: Prepare Web Assets for Capacitor
         run: |
+          rm -rf www
           mkdir -p www
-          cp index.html version.json www/ 2>/dev/null || true
-          cp favicon.ico favicon.png www/ 2>/dev/null || true
-          cp -r css www/
-          cp -r js www/
-          cp -r assets www/ 2>/dev/null || true
+          cp -r singstudio-react/dist/* www/
+          cp -r singstudio-react/public/assets www/ 2>/dev/null || true
 
       - name: Initialize Capacitor Android Project
         run: |
@@ -83,7 +96,7 @@ jobs:
       - name: Configure Android App Icon and Permissions
         run: |
           # 替換 Android 應用程式啟動圖示
-          find android/app/src/main/res/ -name "ic_launcher*.png" -exec cp assets/icon.png {} \; 2>/dev/null || true
+          find android/app/src/main/res/ -name "ic_launcher*.png" -exec cp singstudio-react/public/assets/icon.png {} \; 2>/dev/null || true
 
           # 加入麥克風錄音與音訊設定權限 (Capacitor 已內建 INTERNET 權限，避免重複宣告警告)
           sed -i '/<manifest/a \    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' android/app/src/main/AndroidManifest.xml
@@ -117,10 +130,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Download Windows EXE
+      - name: Download Windows Standalone EXE
         uses: actions/download-artifact@v4
         with:
           name: SingStudio-Windows-x64
+          path: .
+
+      - name: Download Windows Setup EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: SingStudio-Windows-Setup
           path: .
 
       - name: Download Android APK
@@ -131,6 +150,8 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           name: SingStudio Release ${{ github.ref_name }}
           overwrite: true
@@ -138,10 +159,12 @@ jobs:
             ### 🎵 SingStudio ${{ github.ref_name }} 自動編譯發佈
             
             本版本由 GitHub Actions 自動建置發布，包含：
-            - **Windows 免安裝執行檔**：`SingStudio-Windows-x64.exe`（直接雙擊即可啟動工作站）
-            - **Android 安裝套件**：`SingStudio-Android.apk`（安裝於手機平板隨身練唱，已內建麥克風錄音權限）
+            - **Windows 免安裝執行檔**：`SingStudio-Windows-x64.exe`（原生 Electron 桌面應用，直接雙擊即可啟動，無需瀏覽器）
+            - **Windows 安裝程式**：`SingStudio-Setup-*.exe`（標準安裝導引程式，自動建立桌面與開始功能表捷徑）
+            - **Android 安裝套件**：`SingStudio-Android.apk`（安裝於手機平板隨身練唱，已內建麥克風錄音權限與正式簽名）
 
             #### 亮點功能：
+            - 原生 React 19 + TypeScript + Electron 桌面視窗體驗（取代舊版 Python HTTP Server）
             - YouTube 免費直連搜尋與 25 FPS 時間軸雙向連動
             - 空白鍵快速播放/暫停快捷鍵
             - 支援接續錄製 (Punch-in)、多段 Takes 單獨重錄與防覆蓋機制
@@ -149,4 +172,5 @@ jobs:
             - 動態字幕起點平移校準 (Offset) 與平滑居中捲動
           files: |
             SingStudio-Windows-x64.exe
+            SingStudio-Setup-*.exe
             SingStudio-Android.apk

@@ -95,5 +95,29 @@ dependencies {
                     f.write(content)
                 print(f"Patched release signingConfig in: {app_gradle}")
 
+    # 5. 同步版本號至 android/app/build.gradle (唯一讀取 package.json)
+    pkg_file = "package.json"
+    if not os.path.exists(pkg_file):
+        pkg_file = os.path.join("singstudio-react", "package.json")
+
+    if os.path.exists(pkg_file) and os.path.exists(app_gradle):
+        import json
+        import re
+        try:
+            with open(pkg_file, "r", encoding="utf-8") as f:
+                pkg_data = json.load(f)
+            ver_name = pkg_data.get("version", "1.0.0")
+            parts = [int(p) for p in ver_name.split('.') if p.isdigit()]
+            ver_code = parts[0] * 10000 + (parts[1] if len(parts) > 1 else 0) * 100 + (parts[2] if len(parts) > 2 else 0) if parts else 100
+            with open(app_gradle, "r", encoding="utf-8") as f:
+                c = f.read()
+            c = re.sub(r'versionCode\s+\d+', f'versionCode {ver_code}', c)
+            c = re.sub(r'versionName\s+"[^"]+"', f'versionName "{ver_name}"', c)
+            with open(app_gradle, "w", encoding="utf-8") as f:
+                f.write(c)
+            print(f"Synced version to build.gradle from package.json: {ver_name} (code: {ver_code})")
+        except Exception as e:
+            print(f"Warning: Failed to sync version to build.gradle: {e}")
+
 if __name__ == "__main__":
     patch_android()
