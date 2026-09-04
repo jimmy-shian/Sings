@@ -17,6 +17,8 @@ class LyricsEngine {
     this.lineElements = [];
     this.rawLrcText = '';
     this.offsetSec = 0; // 歌詞時間偏移量 (秒)
+    this.selectedLineIndex = -1; // 使用者主動選取之歌詞句索引 (用於精準對齊)
+    this.onLineContextMenuCallback = null;
   }
 
   init(containerElement) {
@@ -47,7 +49,8 @@ class LyricsEngine {
     this.rawLrcText = lrcText;
     this.lyrics = [];
     this.currentIndex = -1;
-    this.offsetSec = 0;
+    // 保留目前使用者設定的 offsetSec (若未初始化則為 0)
+    if (typeof this.offsetSec !== 'number') this.offsetSec = 0;
 
     if (!lrcText || typeof lrcText !== 'string') {
       this.render();
@@ -114,16 +117,48 @@ class LyricsEngine {
   }
 
   /**
-   * 以目前播放指針時間，設定為目標歌詞行（或第一行）之起點
+   * 選取特定歌詞行
+   */
+  selectLine(idx) {
+    if (idx < 0 || idx >= this.lyrics.length) {
+      this.selectedLineIndex = -1;
+    } else {
+      this.selectedLineIndex = idx;
+    }
+    this.lineElements.forEach((el, i) => {
+      if (i === this.selectedLineIndex) {
+        el.classList.add('selected');
+      } else {
+        el.classList.remove('selected');
+      }
+    });
+    return this.selectedLineIndex >= 0 ? this.lyrics[this.selectedLineIndex] : null;
+  }
+
+  /**
+   * 將指定行精確對齊至目標播放時間
+   */
+  alignLineToTime(lineIdx, targetTime) {
+    if (this.lyrics.length === 0) return this.offsetSec;
+    const target = (lineIdx >= 0 && lineIdx < this.lyrics.length) ? this.lyrics[lineIdx] : null;
+    if (!target) return this.offsetSec;
+    const newOffset = targetTime - target.time;
+    this.setOffset(newOffset);
+    return {
+      offsetSec: this.offsetSec,
+      line: target,
+      targetTime: targetTime
+    };
+  }
+
+  /**
+   * 以目前播放指針時間，設定為選取行（或目前播放行/第一行）之起點
    */
   setAnchorAtCurrentTime(targetTime) {
     if (this.lyrics.length === 0) return this.offsetSec;
-    const refItem = this.currentIndex >= 0 ? this.lyrics[this.currentIndex] : this.lyrics[0];
-    if (refItem) {
-      const newOffset = targetTime - refItem.time;
-      return this.setOffset(newOffset);
-    }
-    return this.offsetSec;
+    const targetIdx = this.selectedLineIndex >= 0 ? this.selectedLineIndex : (this.currentIndex >= 0 ? this.currentIndex : 0);
+    const res = this.alignLineToTime(targetIdx, targetTime);
+    return typeof res === 'object' ? res.offsetSec : res;
   }
 
   updateTimeDisplay() {
@@ -142,6 +177,7 @@ class LyricsEngine {
     this.lyrics = [];
     this.rawLrcText = '';
     this.currentIndex = -1;
+    this.selectedLineIndex = -1;
     this.offsetSec = 0;
     this.emptyCustomHint = customHint;
     this.render();
@@ -181,6 +217,7 @@ class LyricsEngine {
       div.innerHTML = `<span class="lyric-time">${Utils.formatDuration(this.getEffectiveTime(item))}</span><span class="lyric-text">${Utils.escapeHtml(item.text)}</span>`;
 
       div.addEventListener('click', () => {
+        this.selectLine(idx);
         const seekTime = this.getEffectiveTime(item);
         if (window.audioEngine) {
           if (window.audioEngine.isPlayingMix) {
@@ -188,6 +225,14 @@ class LyricsEngine {
           } else if (!window.audioEngine.isRecording) {
             window.audioEngine.seekBackingOnly(seekTime);
           }
+        }
+      });
+
+      div.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.selectLine(idx);
+        if (this.onLineContextMenuCallback) {
+          this.onLineContextMenuCallback(e, item, idx);
         }
       });
 

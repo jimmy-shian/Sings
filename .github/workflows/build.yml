@@ -34,7 +34,7 @@ jobs:
 
       - name: Compile Standalone Windows EXE
         run: |
-          pyinstaller --noconfirm --onefile --name "SingStudio-Windows-x64" --add-data "index.html;." --add-data "css;css" --add-data "js;js" server.py
+          pyinstaller --noconfirm --onefile --name "SingStudio-Windows-x64" --add-data "index.html;." --add-data "css;css" --add-data "js;js" --add-data "version.json;." server.py
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -92,36 +92,7 @@ jobs:
           npx cap sync android
 
           # 解決 Kotlin stdlib-jdk7 / stdlib-jdk8 與 kotlin-stdlib 重複類別衝突 (AGP checkDebugDuplicateClasses)
-          # 1. 於全域 build.gradle 排除舊版 jdk7 / jdk8 模組
-          cat << 'EOF' >> android/build.gradle
-
-allprojects {
-    configurations.all {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-}
-EOF
-
-          # 2. 於 app/build.gradle 強制排除並宣告約束對齊 Kotlin 依賴版本
-          cat << 'EOF' >> android/app/build.gradle
-
-configurations.all {
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-}
-
-dependencies {
-    constraints {
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22") {
-            because("kotlin-stdlib-jdk7 is now part of kotlin-stdlib")
-        }
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22") {
-            because("kotlin-stdlib-jdk8 is now part of kotlin-stdlib")
-        }
-    }
-}
-EOF
+          python3 scripts/patch_android_build.py
 
       - name: Build Android APK (Gradle)
         run: |

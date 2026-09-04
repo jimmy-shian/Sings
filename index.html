@@ -154,7 +154,7 @@
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 13.5px; font-weight: 600; color: var(--text-muted);">歌詞起點校準:</span>
                   <button id="btnLyricsOffsetMinus" class="btn btn-sm" type="button" title="整段提早 0.5 秒">-0.5s</button>
-                  <span id="lblLyricsOffset" class="offset-badge" style="font-family: monospace; font-size: 13.5px; font-weight: 700; color: var(--accent); background: var(--surface); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">+0.0s</span>
+                  <input type="text" id="lblLyricsOffset" class="offset-input" value="+0.0s" title="可直接手動輸入偏移秒數 (如: +2.5 或 -1.0)">
                   <button id="btnLyricsOffsetPlus" class="btn btn-sm" type="button" title="整段延後 0.5 秒">+0.5s</button>
                   <button id="btnLyricsOffsetReset" class="btn btn-sm" type="button" title="重設為 0s">0s</button>
                 </div>
@@ -503,6 +503,24 @@
         <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h12"></path></svg>
         <span>📍 對齊歌詞至此時間</span>
       </div>
+    </div>
+  </div>
+
+  <!-- 歌詞專屬右鍵選單 (Context Menu - 自選句精準對齊指針時間) -->
+  <div id="lyricsContextMenu" class="timeline-context-menu" style="display: none;">
+    <div id="lyricsCtxHeader" class="context-menu-header">00:00 · 歌詞選項</div>
+    <div class="context-menu-item" id="lyricsCtxAlignNow">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h12"></path></svg>
+      <span id="lblLyricsCtxAlign">📍 將此句對齊至當前播放時間</span>
+    </div>
+    <div class="context-menu-item" id="lyricsCtxPlayLine">
+      <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      <span id="lblLyricsCtxPlay">▶ 從此句開始播放伴奏</span>
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="lyricsCtxCopyLine">
+      <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>📋 複製此句歌詞文字</span>
     </div>
   </div>
 

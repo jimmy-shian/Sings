@@ -92,6 +92,26 @@ class YouTubeManager {
   }
 
   /**
+   * 透過官方免 API Key 的 oEmbed API 獲取真實影片標題與頻道名
+   */
+  async fetchVideoInfo(videoId) {
+    if (!videoId) return null;
+    try {
+      const resp = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { signal: AbortSignal.timeout(4000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        return {
+          title: data.title || '',
+          channel: data.author_name || 'YouTube'
+        };
+      }
+    } catch (e) {
+      // 靜默忽略
+    }
+    return null;
+  }
+
+  /**
    * 載入指定影片 ID
    */
   loadVideo(videoId, title = 'YouTube 伴奏') {
@@ -99,6 +119,19 @@ class YouTubeManager {
     this.currentTitle = title;
     this.duration = 0;
     this.stopSyncTimer();
+
+    // 若預設或無名稱，非同步獲取真實影片標題
+    if (!this.currentTitle || this.currentTitle.startsWith('YouTube 影片') || this.currentTitle === 'YouTube 伴奏') {
+      this.fetchVideoInfo(videoId).then(info => {
+        if (info && info.title) {
+          this.currentTitle = info.title;
+          const trackTitleEl = document.getElementById('currentTrackTitle');
+          if (trackTitleEl && (trackTitleEl.textContent.startsWith('YouTube 影片') || trackTitleEl.textContent === 'YouTube 伴奏' || !trackTitleEl.textContent)) {
+            trackTitleEl.textContent = info.title;
+          }
+        }
+      }).catch(() => {});
+    }
 
     if (!this.player) {
       this.player = new YT.Player(this.containerId, {
@@ -196,14 +229,23 @@ class YouTubeManager {
       // 後端未啟動，走純靜態備援方案
     }
 
-    // 2. 備援方案：若使用者輸入的是網址或 ID，直接返回單一項目
+    // 2. 備援方案：若使用者輸入的是網址或 ID，獲取真實標題並返回單一項目
     const directId = this.extractVideoId(q);
     if (directId) {
+      let title = `YouTube 影片 (${directId})`;
+      let channel = '直接匯入';
+      try {
+        const info = await this.fetchVideoInfo(directId);
+        if (info && info.title) {
+          title = info.title;
+          channel = info.channel;
+        }
+      } catch (e) {}
       return [{
         id: directId,
-        title: `YouTube 影片 (${directId})`,
+        title: title,
         duration: '自訂',
-        channel: '直接匯入'
+        channel: channel
       }];
     }
 

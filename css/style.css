@@ -564,6 +564,92 @@ body {
   color: var(--text-muted);
 }
 
+/* LRCLIB 展開預覽卡片樣式 */
+#lrcResultsList {
+  max-height: 380px;
+}
+
+.lrc-preview-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.lrc-preview-card:hover {
+  border-color: var(--border);
+}
+
+.lrc-preview-card.expanded {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.lrc-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.lrc-preview-header:hover {
+  background: var(--surface-highlight);
+}
+
+.lrc-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lrc-preview-body {
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.35);
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-height: 190px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.lrc-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--surface-subtle);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.offset-input {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--surface);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  width: 72px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.offset-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
 /* 動態歌詞容器 (置中平滑滾動，文字不超出邊界) */
 .lyrics-box {
   height: 340px;
@@ -634,6 +720,14 @@ body {
   box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
   max-width: 98%;
   margin: 4px auto;
+}
+
+.lyric-line.selected {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
 }
 
 .lyric-empty {

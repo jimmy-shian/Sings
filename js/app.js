@@ -157,7 +157,16 @@ document.addEventListener('DOMContentLoaded', () => {
     lblCtxDeleteTake: document.getElementById('lblCtxDeleteTake'),
     ctxZoomIn: document.getElementById('ctxZoomIn'),
     ctxZoomOut: document.getElementById('ctxZoomOut'),
-    ctxZoomReset: document.getElementById('ctxZoomReset')
+    ctxZoomReset: document.getElementById('ctxZoomReset'),
+
+    // 歌詞專屬右鍵選單 (Context Menu)
+    lyricsContextMenu: document.getElementById('lyricsContextMenu'),
+    lyricsCtxHeader: document.getElementById('lyricsCtxHeader'),
+    lyricsCtxAlignNow: document.getElementById('lyricsCtxAlignNow'),
+    lblLyricsCtxAlign: document.getElementById('lblLyricsCtxAlign'),
+    lyricsCtxPlayLine: document.getElementById('lyricsCtxPlayLine'),
+    lblLyricsCtxPlay: document.getElementById('lblLyricsCtxPlay'),
+    lyricsCtxCopyLine: document.getElementById('lyricsCtxCopyLine')
   };
 
   let recordLoopId = null;
@@ -218,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
       el.btnTabSource.classList.remove('active');
       el.viewLyrics.style.display = 'flex';
       el.viewSource.style.display = 'none';
+      // 切換至歌詞檢視時，根據偏移量數值自動刷新歌詞起始時間
+      lyricsEngine.updateTimeDisplay();
+      updateLyricsOffsetDisplay();
     }
   }
 
@@ -572,17 +584,56 @@ document.addEventListener('DOMContentLoaded', () => {
     Utils.downloadBlob(blob, `${el.currentTrackTitle.textContent.trim() || 'lyrics'}.lrc`);
   });
 
-  el.btnSearchLrc.addEventListener('click', () => {
-    el.modalLrc.classList.add('open');
-    el.lrcSearchQuery.value = el.currentTrackTitle.textContent
-      .replace(/\[.*?\]/g, '')
-      .replace(/\(.*?\)/g, '')
-      .replace(/【.*?】/g, '')
-      .replace(/\.[^/.]+$/, "")
-      .trim();
-  });
+  function cleanTrackTitleForSearch(raw) {
+    if (!raw) return '';
+    let text = String(raw).trim();
+    if (text.startsWith('YouTube 影片') || text.startsWith('YouTube 伴奏') || text.includes('待機中') || text.includes('未命名')) {
+      return '';
+    }
+    // 移除常見音樂副檔名
+    text = text.replace(/\.(mp3|wav|flac|m4a|ogg|aac|webm)$/i, '');
+    // 移除常見括號及其中標註（例如【官方MV】、[Official MV]、(伴奏版)等）
+    text = text.replace(/【.*?】/g, ' ')
+               .replace(/\[.*?\]/g, ' ')
+               .replace(/\(.*?\)/g, ' ')
+               .replace(/（.*?）/g, ' ')
+               .replace(/《.*?》/g, ' ');
+    // 移除常見雜訊字詞
+    text = text.replace(/\b(Official\s*(Music\s*)?Video|Official\s*MV|MV|HD|4K|1080p|Audio|Lyrics?|Visualizer)\b/gi, ' ');
+    text = text.replace(/(伴奏|純音樂|消音版|減人聲|動態歌詞|KTV版|原版伴奏|高清|重製)/gi, ' ');
+    // 清理多餘符號與空白
+    text = text.replace(/[-_–—|/]/g, ' ').replace(/\s+/g, ' ').trim();
+    return text;
+  }
 
+  function openLrcSearchModal() {
+    el.modalLrc.classList.add('open');
+    let candidate = '';
+    if (audioEngine.sourceMode === 'youtube' && window.youtubeManager && window.youtubeManager.currentTitle) {
+      candidate = window.youtubeManager.currentTitle;
+    } else if (el.currentTrackTitle && el.currentTrackTitle.textContent) {
+      candidate = el.currentTrackTitle.textContent;
+    }
+    const cleaned = cleanTrackTitleForSearch(candidate);
+    if (cleaned) {
+      el.lrcSearchQuery.value = cleaned;
+    }
+    setTimeout(() => {
+      el.lrcSearchQuery.focus();
+      el.lrcSearchQuery.select();
+    }, 50);
+  }
+
+  el.btnSearchLrc.addEventListener('click', openLrcSearchModal);
   el.btnCloseLrcModal.addEventListener('click', () => el.modalLrc.classList.remove('open'));
+
+  // Enter 鍵直接觸發搜尋
+  el.lrcSearchQuery.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      el.btnDoLrcSearch.click();
+    }
+  });
 
   el.btnDoLrcSearch.addEventListener('click', async () => {
     const q = el.lrcSearchQuery.value.trim();
@@ -600,22 +651,69 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       list.forEach(song => {
-        const item = document.createElement('div');
-        item.className = 'yt-result-item';
-        item.innerHTML = `
-          <div>
-            <div class="yt-item-title">${Utils.escapeHtml(song.trackName)}</div>
-            <div class="yt-item-sub">${Utils.escapeHtml(song.artistName)} · ${song.syncedLyrics ? '[同步時間軸]' : '[純文字]'}</div>
+        const card = document.createElement('div');
+        card.className = 'lrc-preview-card';
+        const hasSynced = !!song.syncedLyrics;
+        const lyricsText = song.syncedLyrics || song.plainLyrics || '（暫無歌詞內容）';
+        const durationFmt = song.duration ? Utils.formatDuration(song.duration) : '';
+
+        card.innerHTML = `
+          <div class="lrc-preview-header">
+            <div style="flex: 1; min-width: 0; padding-right: 12px;">
+              <div class="yt-item-title">${Utils.escapeHtml(song.trackName)}</div>
+              <div class="yt-item-sub">
+                ${Utils.escapeHtml(song.artistName)}${song.albumName ? ` · ${Utils.escapeHtml(song.albumName)}` : ''}${durationFmt ? ` · ${durationFmt}` : ''}
+                <span style="color: ${hasSynced ? 'var(--accent)' : 'var(--text-muted)'}; margin-left: 6px;">${hasSynced ? '[同步動態 LRC]' : '[純文字]'}</span>
+              </div>
+            </div>
+            <div class="lrc-preview-actions">
+              <button class="btn btn-sm btn-outline btn-toggle-preview" type="button">預覽</button>
+              <button class="btn btn-sm btn-primary btn-apply-lrc" type="button">套用</button>
+            </div>
           </div>
-          <button class="btn btn-sm btn-primary">套用</button>
+          <div class="lrc-preview-body" style="display: none;">
+            ${Utils.escapeHtml(lyricsText)}
+          </div>
+          <div class="lrc-preview-footer" style="display: none;">
+            <span style="font-size: 13px; color: var(--text-muted);">
+              ${hasSynced ? '✨ 包含精確時間軸，套用後可隨時微調起點' : '⚠️ 純文字歌詞（無時間標記）'}
+            </span>
+            <button class="btn btn-sm btn-primary btn-apply-lrc-sub" type="button">套用此歌詞</button>
+          </div>
         `;
 
-        item.querySelector('button').addEventListener('click', () => {
-          lyricsEngine.parseLRC(song.syncedLyrics || song.plainLyrics || '');
-          el.modalLrc.classList.remove('open');
+        const header = card.querySelector('.lrc-preview-header');
+        const body = card.querySelector('.lrc-preview-body');
+        const footer = card.querySelector('.lrc-preview-footer');
+        const btnToggle = card.querySelector('.btn-toggle-preview');
+        const btnApply = card.querySelector('.btn-apply-lrc');
+        const btnApplySub = card.querySelector('.btn-apply-lrc-sub');
+
+        function togglePreview(e) {
+          if (e && e.target && e.target.classList.contains('btn-apply-lrc')) return;
+          const isExpanded = card.classList.toggle('expanded');
+          body.style.display = isExpanded ? 'block' : 'none';
+          footer.style.display = isExpanded ? 'flex' : 'none';
+          btnToggle.textContent = isExpanded ? '收合' : '預覽';
+        }
+
+        header.addEventListener('click', togglePreview);
+        btnToggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          togglePreview();
         });
 
-        el.lrcResultsList.appendChild(item);
+        function applyThisLyrics(e) {
+          e.stopPropagation();
+          lyricsEngine.parseLRC(lyricsText);
+          el.modalLrc.classList.remove('open');
+          UI.toast(`已套用「${song.trackName}」同步歌詞`, 'success');
+        }
+
+        btnApply.addEventListener('click', applyThisLyrics);
+        btnApplySub.addEventListener('click', applyThisLyrics);
+
+        el.lrcResultsList.appendChild(card);
       });
     } catch (err) {
       el.lrcResultsList.innerHTML = `<div style="padding:16px;color:var(--danger);text-align:center;">${err.message}</div>`;
@@ -1199,8 +1297,30 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateLyricsOffsetDisplay() {
     const off = lyricsEngine.offsetSec;
     if (el.lblLyricsOffset) {
-      el.lblLyricsOffset.textContent = (off >= 0 ? '+' : '') + off.toFixed(1) + 's';
+      el.lblLyricsOffset.value = (off >= 0 ? '+' : '') + off.toFixed(1) + 's';
     }
+  }
+
+  function handleLyricsOffsetInput() {
+    if (!el.lblLyricsOffset) return;
+    const raw = el.lblLyricsOffset.value.trim().replace(/s$/i, '');
+    const val = parseFloat(raw);
+    if (!isNaN(val)) {
+      lyricsEngine.setOffset(val);
+      updateLyricsOffsetDisplay();
+    } else {
+      updateLyricsOffsetDisplay();
+    }
+  }
+
+  if (el.lblLyricsOffset) {
+    el.lblLyricsOffset.addEventListener('change', handleLyricsOffsetInput);
+    el.lblLyricsOffset.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleLyricsOffsetInput();
+        el.lblLyricsOffset.blur();
+      }
+    });
   }
 
   if (el.btnLyricsOffsetMinus) {
@@ -1224,8 +1344,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el.btnLyricsSetAnchor) {
     el.btnLyricsSetAnchor.addEventListener('click', () => {
       const cur = audioEngine.getCurrentTime();
-      lyricsEngine.setAnchorAtCurrentTime(cur);
+      const selIdx = lyricsEngine.selectedLineIndex;
+      const res = lyricsEngine.setAnchorAtCurrentTime(cur);
       updateLyricsOffsetDisplay();
+      const lineDesc = (selIdx >= 0 && lyricsEngine.lyrics[selIdx])
+        ? `第 ${selIdx + 1} 句「${lyricsEngine.lyrics[selIdx].text.slice(0, 10)}...」`
+        : '目標歌詞';
+      const sign = res >= 0 ? '+' : '';
+      UI.toast(`已將${lineDesc}對齊至當前時間 ${Utils.formatDuration(cur)} (位移 ${sign}${res.toFixed(1)}s)`, 'success');
     });
   }
 
@@ -1430,6 +1556,102 @@ document.addEventListener('DOMContentLoaded', () => {
   if (el.ctxZoomIn) el.ctxZoomIn.addEventListener('click', () => { mainTimeline.zoomIn(); hideTimelineContextMenu(); });
   if (el.ctxZoomOut) el.ctxZoomOut.addEventListener('click', () => { mainTimeline.zoomOut(); hideTimelineContextMenu(); });
   if (el.ctxZoomReset) el.ctxZoomReset.addEventListener('click', () => { mainTimeline.zoomReset(); hideTimelineContextMenu(); });
+
+  // ==========================================================================
+  // 歌詞專屬右鍵選單 (Context Menu - 自選句精確對齊指針時間)
+  // ==========================================================================
+  let activeLyricsContext = null; // { item, idx }
+
+  function showLyricsContextMenu(e, item, idx) {
+    activeLyricsContext = { item, idx };
+    const menu = el.lyricsContextMenu;
+    if (!menu) return;
+
+    hideTimelineContextMenu(); // 關閉時間軸選單避免重疊
+
+    const curTime = audioEngine.getCurrentTime();
+    const lineEffectiveTime = lyricsEngine.getEffectiveTime(item);
+
+    if (el.lyricsCtxHeader) {
+      el.lyricsCtxHeader.textContent = `${Utils.formatDuration(lineEffectiveTime)} · 第 ${idx + 1} 句`;
+    }
+    if (el.lblLyricsCtxAlign) {
+      el.lblLyricsCtxAlign.textContent = `📍 將此句對齊至當前播放時間 [${Utils.formatDuration(curTime)}]`;
+    }
+    if (el.lblLyricsCtxPlay) {
+      el.lblLyricsCtxPlay.textContent = `▶ 從此句開始播放伴奏 [${Utils.formatDuration(lineEffectiveTime)}]`;
+    }
+
+    menu.style.display = 'block';
+    const menuW = 260;
+    const menuH = 170;
+    const posX = Math.min(e.clientX, window.innerWidth - menuW - 12);
+    const posY = Math.min(e.clientY, window.innerHeight - menuH - 12);
+
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+  }
+
+  function hideLyricsContextMenu() {
+    if (el.lyricsContextMenu) {
+      el.lyricsContextMenu.style.display = 'none';
+    }
+  }
+
+  lyricsEngine.onLineContextMenuCallback = (e, item, idx) => {
+    showLyricsContextMenu(e, item, idx);
+  };
+
+  window.addEventListener('click', (e) => {
+    if (el.lyricsContextMenu && !el.lyricsContextMenu.contains(e.target)) {
+      hideLyricsContextMenu();
+    }
+  });
+  window.addEventListener('blur', hideLyricsContextMenu);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideLyricsContextMenu();
+  });
+
+  if (el.lyricsCtxAlignNow) {
+    el.lyricsCtxAlignNow.addEventListener('click', () => {
+      hideLyricsContextMenu();
+      if (!activeLyricsContext) return;
+      const curTime = audioEngine.getCurrentTime();
+      const res = lyricsEngine.alignLineToTime(activeLyricsContext.idx, curTime);
+      updateLyricsOffsetDisplay();
+      const sign = res.offsetSec >= 0 ? '+' : '';
+      const previewText = activeLyricsContext.item.text ? `「${activeLyricsContext.item.text.slice(0, 10)}...」` : '';
+      UI.toast(`已將第 ${activeLyricsContext.idx + 1} 句 ${previewText}對齊至 ${Utils.formatDuration(curTime)} (位移 ${sign}${res.offsetSec.toFixed(1)}s)`, 'success');
+    });
+  }
+
+  if (el.lyricsCtxPlayLine) {
+    el.lyricsCtxPlayLine.addEventListener('click', () => {
+      hideLyricsContextMenu();
+      if (!activeLyricsContext) return;
+      const seekTime = lyricsEngine.getEffectiveTime(activeLyricsContext.item);
+      if (audioEngine.sourceMode === 'youtube' && window.youtubeManager) {
+        window.youtubeManager.seekTo(seekTime);
+        window.youtubeManager.play();
+        updateBackingSoloBtn(true);
+      } else {
+        audioEngine.seekBackingOnly(seekTime);
+        if (!audioEngine.isBackingSoloPlaying) el.btnPlayBackingOnly.click();
+      }
+      mainTimeline.updatePlayhead(seekTime, true);
+      lyricsEngine.update(seekTime);
+      updateRecordTimeDisplay(seekTime);
+    });
+  }
+
+  if (el.lyricsCtxCopyLine) {
+    el.lyricsCtxCopyLine.addEventListener('click', () => {
+      hideLyricsContextMenu();
+      if (!activeLyricsContext || !activeLyricsContext.item) return;
+      Utils.copyToClipboard(activeLyricsContext.item.text || '');
+      UI.toast('已複製此句歌詞文字', 'info');
+    });
+  }
 
   // 1-Click 複製互動卡片綁定 (若存在)
   document.querySelectorAll('.config-item').forEach(card => {
