@@ -271,11 +271,23 @@ class AudioTimeline {
     this.render();
   }
 
+  zoomIn(factor = 1.3) {
+    this.setZoom(this.zoomLevel * factor);
+  }
+
+  zoomOut(factor = 1.3) {
+    this.setZoom(this.zoomLevel / factor);
+  }
+
   resetZoom() {
     this.zoomLevel = 1.0;
     this.viewStartTime = 0;
     this.onZoomChange(this.zoomLevel);
     this.render();
+  }
+
+  zoomReset() {
+    this.resetZoom();
   }
 
   setDuration(dur) {

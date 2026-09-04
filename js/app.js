@@ -147,7 +147,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ctxPlayFromHere: document.getElementById('ctxPlayFromHere'),
     ctxPunchInHere: document.getElementById('ctxPunchInHere'),
     ctxAlignLyric: document.getElementById('ctxAlignLyric'),
-    ctxTakeDivider: document.getElementById('ctxTakeDivider'),
+    ctxTakeGroup: document.getElementById('ctxTakeGroup'),
+    ctxEmptyGroup: document.getElementById('ctxEmptyGroup'),
     ctxPlayTake: document.getElementById('ctxPlayTake'),
     lblCtxPlayTake: document.getElementById('lblCtxPlayTake'),
     ctxReRecordTake: document.getElementById('ctxReRecordTake'),
@@ -1285,23 +1286,23 @@ document.addEventListener('DOMContentLoaded', () => {
     el.ctxMenuHeader.textContent = `${Utils.formatDuration(info.time)} · 時間軸選項`;
 
     if (info.take) {
-      el.ctxTakeDivider.style.display = 'block';
-      el.ctxPlayTake.style.display = 'flex';
-      el.ctxReRecordTake.style.display = 'flex';
-      el.ctxDeleteTake.style.display = 'flex';
-      el.lblCtxPlayTake.textContent = `▶ 試聽 ${info.take.id} (${info.take.duration.toFixed(1)}s)`;
-      el.lblCtxReRecordTake.textContent = `↻ 僅重錄 ${info.take.id} (自動限時)`;
-      el.lblCtxDeleteTake.textContent = `× 刪除 ${info.take.id}`;
+      // 點選在 Take 片段上：僅獨立顯示該片段編輯選單 (無縮放選單)
+      if (el.ctxTakeGroup) el.ctxTakeGroup.style.display = 'block';
+      if (el.ctxEmptyGroup) el.ctxEmptyGroup.style.display = 'none';
+      el.ctxMenuHeader.textContent = `🎵 片段 ${info.take.id} (${info.take.duration.toFixed(1)}s)`;
+      if (el.lblCtxPlayTake) el.lblCtxPlayTake.textContent = `▶ 試聽 ${info.take.id} (時間軸同步)`;
+      if (el.lblCtxReRecordTake) el.lblCtxReRecordTake.textContent = `↻ 僅重錄 ${info.take.id} (自動限時)`;
+      if (el.lblCtxDeleteTake) el.lblCtxDeleteTake.textContent = `× 刪除 ${info.take.id}`;
     } else {
-      el.ctxTakeDivider.style.display = 'none';
-      el.ctxPlayTake.style.display = 'none';
-      el.ctxReRecordTake.style.display = 'none';
-      el.ctxDeleteTake.style.display = 'none';
+      // 點選在空白處：獨立顯示視窗縮放與時間軸跳轉選單
+      if (el.ctxTakeGroup) el.ctxTakeGroup.style.display = 'none';
+      if (el.ctxEmptyGroup) el.ctxEmptyGroup.style.display = 'block';
+      el.ctxMenuHeader.textContent = `${Utils.formatDuration(info.time)} · 時間軸操作`;
     }
 
     menu.style.display = 'block';
     const menuW = 230;
-    const menuH = info.take ? 320 : 210;
+    const menuH = info.take ? 180 : 250;
     const posX = Math.min(e.clientX, window.innerWidth - menuW - 12);
     const posY = Math.min(e.clientY, window.innerHeight - menuH - 12);
 
@@ -1370,9 +1371,17 @@ document.addEventListener('DOMContentLoaded', () => {
     el.ctxPlayTake.addEventListener('click', () => {
       hideTimelineContextMenu();
       if (activeContextTarget && activeContextTarget.take) {
-        const a = new Audio(activeContextTarget.take.url);
-        a.play();
-        UI.toast(`正在試聽 ${activeContextTarget.take.id}`, 'info');
+        const take = activeContextTarget.take;
+        mainTimeline.updatePlayhead(take.startTime, false);
+        updateRecordTimeDisplay(take.startTime);
+        audioEngine.playTakeAudio(take, (curTime) => {
+          mainTimeline.updatePlayhead(curTime, true);
+          updateRecordTimeDisplay(curTime);
+        }, () => {
+          mainTimeline.updatePlayhead(take.startTime, false);
+          updateRecordTimeDisplay(take.startTime);
+        });
+        UI.toast(`正在試聽 ${take.id} (時間軸指針同步推進)`, 'info');
       }
     });
   }

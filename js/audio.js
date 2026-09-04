@@ -69,6 +69,8 @@ class AudioEngine {
     this.micGainNode = null;
     this.noiseFilterNode = null;
     this.monitorGainNode = null;
+    this.activeTakeAudio = null;
+    this.takePlaybackRaf = null;
 
     // 方案 2: Web Audio 即時消音/去除中置人聲 (Center Channel Cancellation / OOPS)
     this.isVocalCancellationEnabled = false;
@@ -301,6 +303,53 @@ class AudioEngine {
     this.updateMonitorRouting();
   }
 
+  /**
+   * 播放單一 Take 片段音訊，並驅動時間軸指針同步推進
+   */
+  playTakeAudio(take, onTimeUpdate, onEnd) {
+    if (!take || !take.url) return null;
+    this.stopTakeAudio();
+
+    const audio = new Audio(take.url);
+    this.activeTakeAudio = audio;
+
+    const startTime = take.startTime;
+    const duration = take.duration;
+
+    const syncLoop = () => {
+      if (!this.activeTakeAudio || this.activeTakeAudio.paused || this.activeTakeAudio.ended) return;
+      const curTime = startTime + audio.currentTime;
+      if (onTimeUpdate) onTimeUpdate(curTime);
+      this.takePlaybackRaf = requestAnimationFrame(syncLoop);
+    };
+
+    audio.onplay = () => syncLoop();
+    audio.onended = () => {
+      if (this.takePlaybackRaf) cancelAnimationFrame(this.takePlaybackRaf);
+      if (onTimeUpdate) onTimeUpdate(startTime + duration);
+      if (onEnd) onEnd();
+      this.activeTakeAudio = null;
+    };
+    audio.onerror = () => {
+      if (this.takePlaybackRaf) cancelAnimationFrame(this.takePlaybackRaf);
+      if (onEnd) onEnd();
+      this.activeTakeAudio = null;
+    };
+
+    audio.play().catch(e => console.warn(e));
+    return audio;
+  }
+
+  stopTakeAudio() {
+    if (this.activeTakeAudio) {
+      this.activeTakeAudio.pause();
+      this.activeTakeAudio = null;
+    }
+    if (this.takePlaybackRaf) {
+      cancelAnimationFrame(this.takePlaybackRaf);
+      this.takePlaybackRaf = null;
+    }
+  }
   /**
    * 設定即時伴奏音量 (錄製/試聽隨時生效，並自動同步為導出混音預設值)
    */

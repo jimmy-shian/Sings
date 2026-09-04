@@ -459,43 +459,50 @@
   <!-- 即時伴奏音訊軸右鍵功能選單 (Context Menu) -->
   <div id="timelineContextMenu" class="timeline-context-menu" style="display: none;">
     <div id="ctxMenuHeader" class="context-menu-header">00:00 · 時間軸選項</div>
-    <div class="context-menu-item" id="ctxPlayFromHere">
-      <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-      <span>從此處播放伴奏</span>
+
+    <!-- 片段專屬選單 (僅在點選特定 Take 片段時獨立顯示) -->
+    <div id="ctxTakeGroup" style="display: none;">
+      <div class="context-menu-item" id="ctxPlayTake">
+        <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span id="lblCtxPlayTake">▶ 試聽片段 (指針同步)</span>
+      </div>
+      <div class="context-menu-item" id="ctxReRecordTake" style="color: var(--warning);">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+        <span id="lblCtxReRecordTake">↻ 僅重錄此段 (自動限時)</span>
+      </div>
+      <div class="context-menu-item" id="ctxDeleteTake" style="color: var(--danger);">
+        <svg class="icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <span id="lblCtxDeleteTake">× 刪除此片段</span>
+      </div>
     </div>
-    <div class="context-menu-item" id="ctxPunchInHere">
-      <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-      <span>從此處接續錄製 (Punch-in)</span>
-    </div>
-    <div class="context-menu-item" id="ctxAlignLyric">
-      <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h12"></path></svg>
-      <span>📍 對齊歌詞至此時間</span>
-    </div>
-    <div class="context-menu-divider" id="ctxTakeDivider" style="display: none;"></div>
-    <div class="context-menu-item" id="ctxPlayTake" style="display: none;">
-      <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-      <span id="lblCtxPlayTake">試聽片段</span>
-    </div>
-    <div class="context-menu-item" id="ctxReRecordTake" style="display: none; color: var(--warning);">
-      <svg class="icon" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
-      <span id="lblCtxReRecordTake">僅重錄此段 (自動限時)</span>
-    </div>
-    <div class="context-menu-item" id="ctxDeleteTake" style="display: none; color: var(--danger);">
-      <svg class="icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-      <span id="lblCtxDeleteTake">刪除此片段</span>
-    </div>
-    <div class="context-menu-divider"></div>
-    <div class="context-menu-item" id="ctxZoomIn">
-      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-      <span>放大視窗 (Zoom In)</span>
-    </div>
-    <div class="context-menu-item" id="ctxZoomOut">
-      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
-      <span>縮小視窗 (Zoom Out)</span>
-    </div>
-    <div class="context-menu-item" id="ctxZoomReset">
-      <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-      <span>重設縮放 (1:1)</span>
+
+    <!-- 空白處時間軸專屬選單 (空白處才出現縮放與導航控制) -->
+    <div id="ctxEmptyGroup">
+      <div class="context-menu-item" id="ctxZoomIn">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        <span>🔍 放大視窗 (Zoom In)</span>
+      </div>
+      <div class="context-menu-item" id="ctxZoomOut">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        <span>🔍 縮小視窗 (Zoom Out)</span>
+      </div>
+      <div class="context-menu-item" id="ctxZoomReset">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+        <span>↺ 重設縮放 (100% 視野)</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" id="ctxPlayFromHere">
+        <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span>▶ 從此處播放伴奏</span>
+      </div>
+      <div class="context-menu-item" id="ctxPunchInHere">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 16 14"></polyline></svg>
+        <span>⏺ 從此處接續錄製 (Punch-in)</span>
+      </div>
+      <div class="context-menu-item" id="ctxAlignLyric">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h12"></path></svg>
+        <span>📍 對齊歌詞至此時間</span>
+      </div>
     </div>
   </div>
 
