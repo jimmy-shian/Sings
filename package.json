@@ -2,6 +2,10 @@
   "name": "sings",
   "version": "1.0.0",
   "description": "SingStudio 專業雙軌音訊工作站",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jimmy-shian/Sings.git"
+  },
   "main": "index.js",
   "scripts": {
     "build": "echo Web assets in www"

@@ -33,9 +33,7 @@ jobs:
 
       - name: Build Windows Standalone & Installer (electron-builder)
         working-directory: singstudio-react
-        run: npm run electron:build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run electron:build -- --publish never
 
       - name: Upload Windows Standalone Artifact
         uses: actions/upload-artifact@v4
