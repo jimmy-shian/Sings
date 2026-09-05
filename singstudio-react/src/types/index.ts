@@ -23,7 +23,11 @@ export interface YouTubeResult {
   title: string;
   duration: string;
   channel: string;
+  thumbnail?: string;
 }
+
+export type LeftTabMode = 'source' | 'lyrics';
+export type AudioSourceMode = 'local' | 'youtube' | 'demo';
 
 export interface Recording {
   id?: number;

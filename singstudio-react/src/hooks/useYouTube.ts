@@ -1,13 +1,26 @@
-﻿import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import type { YouTubeResult } from '../types';
+
+export function extractYouTubeVideoId(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  // Direct 11-char ID
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  // Comprehensive regex for all YouTube link formats
+  const match = trimmed.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+?&v=|shorts\/|live\/))([a-zA-Z0-9_-]{11})/i);
+  return match ? match[1] : null;
+}
 
 export function useYouTube() {
   const [player, setPlayer] = useState<any>(null);
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>('VS1lvYuW3LQ');
-  const [currentTitle, setCurrentTitle] = useState('預設示範歌曲 (VS1lvYuW3LQ)');
+  const [currentTitle, setCurrentTitle] = useState('王心凌 Cyndi Wang – 大眠 (Official Music Video)');
   const [duration, setDuration] = useState(0);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<YouTubeResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [karaokeMode, setKaraokeMode] = useState(true);
 
@@ -104,11 +117,37 @@ export function useYouTube() {
     setSearchResults([]);
 
     try {
-      const ytUrlMatch = rawQuery.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
-      if (ytUrlMatch) {
-        const videoId = ytUrlMatch[1];
-        setSearchResults([{ id: videoId, title: `YouTube 影片 (${videoId})`, duration: '載入中...', channel: 'YouTube' }]);
-        loadVideo(videoId, `YouTube 影片 (${videoId})`);
+      // 判斷是否為 YouTube 影片網址或 11 碼影片 ID
+      const directVideoId = extractYouTubeVideoId(rawQuery);
+      if (directVideoId) {
+        let title = `YouTube 影片 (${directVideoId})`;
+        let channel = 'YouTube';
+        let thumbnail = `https://i.ytimg.com/vi/${directVideoId}/hqdefault.jpg`;
+
+        // 免費、無限制、免金鑰使用 YouTube 官方 oEmbed API 取得正式歌曲名稱與創作者
+        try {
+          const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${directVideoId}&format=json`;
+          const res = await fetch(oembedUrl);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.title) title = data.title;
+            if (data.author_name) channel = data.author_name;
+            if (data.thumbnail_url) thumbnail = data.thumbnail_url;
+          }
+        } catch (oembedErr) {
+          console.warn('oEmbed 取得影片詳情異常，使用預設值:', oembedErr);
+        }
+
+        const directResult: YouTubeResult = {
+          id: directVideoId,
+          title,
+          duration: '直連伴奏',
+          channel,
+          thumbnail,
+        };
+
+        setSearchResults([directResult]);
+        loadVideo(directVideoId, title);
         setIsSearching(false);
         return;
       }
@@ -141,7 +180,7 @@ export function useYouTube() {
             const data = JSON.parse(match[1]);
             const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents
               ?.sectionListRenderer?.contents || [];
-            const results: any[] = [];
+            const results: YouTubeResult[] = [];
             for (const sec of contents) {
               const items = sec?.itemSectionRenderer?.contents || [];
               for (const it of items) {
@@ -152,6 +191,7 @@ export function useYouTube() {
                     title: vr.title?.runs?.[0]?.text || '',
                     duration: vr.lengthText?.simpleText || '',
                     channel: vr.ownerText?.runs?.[0]?.text || '',
+                    thumbnail: vr.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${vr.videoId}/hqdefault.jpg`,
                   });
                 }
               }

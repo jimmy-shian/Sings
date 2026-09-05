@@ -19,7 +19,8 @@ import { useStorage } from './hooks/useStorage';
 import type { TimelineContextMenuInfo, LyricsContextMenuInfo, VocalTake } from './types';
 import './styles/App.css';
 
-type SourceMode = 'local' | 'youtube' | 'demo' | 'lyrics';
+type SourceMode = 'local' | 'youtube' | 'demo';
+type LeftTab = 'source' | 'lyrics';
 
 function App() {
   const audio = useAudioEngine();
@@ -30,6 +31,7 @@ function App() {
 
   const [version, setVersion] = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0');
   const [sourceMode, setSourceMode] = useState<SourceMode>('demo');
+  const [leftTab, setLeftTab] = useState<LeftTab>('source');
   const [localFileName, setLocalFileName] = useState('');
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showLrcModal, setShowLrcModal] = useState(false);
@@ -111,9 +113,14 @@ function App() {
 
   const handleYouTubeSearch = useCallback((query: string) => {
     setSourceMode('youtube');
-    setLocalFileName(`YouTube: ${query}`);
     youtube.search(query);
   }, [youtube]);
+
+  useEffect(() => {
+    if (sourceMode === 'youtube' && youtube.currentTitle) {
+      setLocalFileName(youtube.currentTitle);
+    }
+  }, [sourceMode, youtube.currentTitle]);
 
   const handleStartRecording = useCallback(async () => {
     await audio.startRecording(timeline.timelineState.currentTime);
@@ -264,12 +271,35 @@ function App() {
                   else audio.playBackingOnly(timeline.timelineState.currentTime);
                 }}
                 onSeek={handleSeek}
-                onChangeFile={() => setSourceMode('local')}
+                onChangeFile={() => {
+                  setLeftTab('source');
+                  setSourceMode('local');
+                }}
               />
             )}
 
-            {sourceMode === 'lyrics' ? (
+            <div className={`left-tab-pane ${leftTab === 'source' ? '' : 'hidden'}`}>
+              <SourcePanel
+                sourceMode={sourceMode}
+                onSourceModeChange={(m) => setSourceMode(m)}
+                leftTab={leftTab}
+                onTabChange={setLeftTab}
+                onLoadLocalFile={handleLoadLocalFile}
+                onLoadDemo={handleLoadDemo}
+                onYouTubeSearch={handleYouTubeSearch}
+                isSearching={youtube.isSearching}
+                searchResults={youtube.searchResults}
+                currentVideoId={youtube.currentVideoId}
+                karaokeMode={youtube.karaokeMode}
+                onKaraokeModeChange={youtube.setKaraokeMode}
+                youtubeContainerRef={youtube.containerRef}
+              />
+            </div>
+
+            <div className={`left-tab-pane ${leftTab === 'lyrics' ? '' : 'hidden'}`}>
               <LyricsPanel
+                leftTab={leftTab}
+                onTabChange={setLeftTab}
                 lyrics={lyrics.lyricsState.lyrics}
                 currentIndex={lyrics.lyricsState.currentIndex}
                 offsetSec={lyrics.lyricsState.offsetSec}
@@ -309,21 +339,7 @@ function App() {
                 onSeekToLyric={handleSeek}
                 onContextMenu={(_e, info) => setLyricsContextMenu(info)}
               />
-            ) : (
-              <SourcePanel
-                sourceMode={sourceMode}
-                onSourceModeChange={(m) => setSourceMode(m as SourceMode)}
-                onLoadLocalFile={handleLoadLocalFile}
-                onLoadDemo={handleLoadDemo}
-                onYouTubeSearch={handleYouTubeSearch}
-                isSearching={youtube.isSearching}
-                searchResults={youtube.searchResults}
-                currentVideoId={youtube.currentVideoId}
-                karaokeMode={youtube.karaokeMode}
-                onKaraokeModeChange={youtube.setKaraokeMode}
-                youtubeContainerRef={youtube.containerRef}
-              />
-            )}
+            </div>
           </div>
 
           <div className="right-column">

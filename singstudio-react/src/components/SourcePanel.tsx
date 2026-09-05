@@ -1,17 +1,20 @@
 import React, { useState, useRef } from 'react';
+import type { YouTubeResult } from '../types';
 
 // ============================================================================
 // SingStudio - SourcePanel 元件 (伴奏來源面板)
 // ============================================================================
 
 interface SourcePanelProps {
-  sourceMode: 'local' | 'youtube' | 'demo' | 'lyrics';
-  onSourceModeChange: (mode: 'local' | 'youtube' | 'demo' | 'lyrics') => void;
+  sourceMode: 'local' | 'youtube' | 'demo';
+  onSourceModeChange: (mode: 'local' | 'youtube' | 'demo') => void;
+  leftTab: 'source' | 'lyrics';
+  onTabChange: (tab: 'source' | 'lyrics') => void;
   onLoadLocalFile: (file: File) => void;
   onLoadDemo: () => void;
   onYouTubeSearch: (query: string) => void;
   isSearching: boolean;
-  searchResults: any[];
+  searchResults: YouTubeResult[];
   currentVideoId: string | null;
   karaokeMode: boolean;
   onKaraokeModeChange: (enabled: boolean) => void;
@@ -21,6 +24,8 @@ interface SourcePanelProps {
 export const SourcePanel: React.FC<SourcePanelProps> = ({
   sourceMode,
   onSourceModeChange,
+  leftTab,
+  onTabChange,
   onLoadLocalFile,
   onLoadDemo,
   onYouTubeSearch,
@@ -49,21 +54,42 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
     }
   };
 
+  const handleYtPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (text && text.trim()) {
+      const clean = text.trim();
+      setYtQuery(clean);
+      // 若貼上內容含有 YouTube 網址或 11 碼 ID，自動觸發直連查詢載入
+      if (/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/[^\s]+|[a-zA-Z0-9_-]{11})/i.test(clean)) {
+        setTimeout(() => {
+          onYouTubeSearch(clean);
+        }, 50);
+      }
+    }
+  };
+
+  const handleYtKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onYouTubeSearch(ytQuery);
+    }
+  };
+
   return (
     <div className="panel panel-equal-height">
       <div className="panel-header">
         <div className="tab-pill-group">
           <button
-            className={`tab-pill-btn ${sourceMode !== 'lyrics' ? 'active' : ''}`}
+            className={`tab-pill-btn ${leftTab === 'source' ? 'active' : ''}`}
             type="button"
-            onClick={() => onSourceModeChange('local')}
+            onClick={() => onTabChange('source')}
           >
             伴奏來源
           </button>
           <button
-            className={`tab-pill-btn ${sourceMode === 'lyrics' ? 'active' : ''}`}
+            className={`tab-pill-btn ${leftTab === 'lyrics' ? 'active' : ''}`}
             type="button"
-            onClick={() => onSourceModeChange('lyrics')}
+            onClick={() => onTabChange('lyrics')}
           >
             同步字幕歌詞 (LRC)
           </button>
@@ -73,31 +99,29 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
         </span>
       </div>
 
-      {sourceMode !== 'lyrics' && (
-        <div className="tab-group" style={{ marginBottom: '12px' }}>
-          <button
-            className={`tab-btn ${sourceMode === 'local' ? 'active' : ''}`}
-            type="button"
-            onClick={() => onSourceModeChange('local')}
-          >
-            本地檔案 (MP3/WAV)
-          </button>
-          <button
-            className={`tab-btn ${sourceMode === 'youtube' ? 'active' : ''}`}
-            type="button"
-            onClick={() => onSourceModeChange('youtube')}
-          >
-            YouTube 直連搜尋
-          </button>
-          <button
-            className={`tab-btn ${sourceMode === 'demo' ? 'active' : ''}`}
-            type="button"
-            onClick={() => onSourceModeChange('demo')}
-          >
-            內建示範和弦
-          </button>
-        </div>
-      )}
+      <div className="tab-group" style={{ marginBottom: '12px' }}>
+        <button
+          className={`tab-btn ${sourceMode === 'local' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSourceModeChange('local')}
+        >
+          本地檔案 (MP3/WAV)
+        </button>
+        <button
+          className={`tab-btn ${sourceMode === 'youtube' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSourceModeChange('youtube')}
+        >
+          YouTube 直連搜尋
+        </button>
+        <button
+          className={`tab-btn ${sourceMode === 'demo' ? 'active' : ''}`}
+          type="button"
+          onClick={() => onSourceModeChange('demo')}
+        >
+          內建示範和弦
+        </button>
+      </div>
 
       {/* 本地檔案面板 */}
       {sourceMode === 'local' && (
@@ -142,7 +166,9 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
               className="input-text"
               value={ytQuery}
               onChange={(e) => setYtQuery(e.target.value)}
-              placeholder="輸入歌曲關鍵字或貼上 YouTube 網址"
+              onPaste={handleYtPaste}
+              onKeyDown={handleYtKeyDown}
+              placeholder="輸入歌曲關鍵字或直接貼上 YouTube 網址"
             />
             <button
               className="btn btn-primary"
@@ -181,10 +207,20 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
                 className={`yt-result-item ${currentVideoId === result.id ? 'active' : ''}`}
                 onClick={() => onYouTubeSearch(result.id)}
               >
-                <div className="yt-result-title">{result.title}</div>
-                <div className="yt-result-meta">
-                  <span>{result.duration}</span>
-                  <span>{result.channel}</span>
+                {result.thumbnail && (
+                  <img
+                    src={result.thumbnail}
+                    alt={result.title}
+                    className="yt-result-thumb"
+                    loading="lazy"
+                  />
+                )}
+                <div className="yt-result-details">
+                  <div className="yt-result-title">{result.title}</div>
+                  <div className="yt-result-meta">
+                    {result.duration && <span>{result.duration}</span>}
+                    {result.channel && <span>{result.channel}</span>}
+                  </div>
                 </div>
               </div>
             ))}

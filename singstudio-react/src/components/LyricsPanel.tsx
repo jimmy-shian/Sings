@@ -1,7 +1,9 @@
-﻿import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { LyricsLine, LyricsContextMenuInfo } from '../types';
 
 interface LyricsPanelProps {
+  leftTab: 'source' | 'lyrics';
+  onTabChange: (tab: 'source' | 'lyrics') => void;
   lyrics: LyricsLine[];
   currentIndex: number;
   offsetSec: number;
@@ -18,6 +20,8 @@ interface LyricsPanelProps {
 }
 
 export const LyricsPanel: React.FC<LyricsPanelProps> = ({
+  leftTab,
+  onTabChange,
   lyrics,
   currentIndex,
   offsetSec,
@@ -64,18 +68,35 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
   return (
     <div className="panel panel-equal-height" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="panel-header">
-        <span className="panel-title">同步字幕視窗 (60 FPS 平滑捲動)</span>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button className="btn btn-sm btn-primary" type="button" onClick={onOpenSearchModal}>
-            🔍 搜尋同步歌詞 (LRCLIB)
+        <div className="tab-pill-group">
+          <button
+            className={`tab-pill-btn ${leftTab === 'source' ? 'active' : ''}`}
+            type="button"
+            onClick={() => onTabChange('source')}
+          >
+            伴奏來源
           </button>
-          <button className="btn btn-sm" type="button" onClick={onImportLrc}>
-            匯入 LRC
-          </button>
-          <button className="btn btn-sm" type="button" onClick={onExportLrc}>
-            匯出 LRC
+          <button
+            className={`tab-pill-btn ${leftTab === 'lyrics' ? 'active' : ''}`}
+            type="button"
+            onClick={() => onTabChange('lyrics')}
+          >
+            同步字幕歌詞 (LRC)
           </button>
         </div>
+        <span className="panel-tag">[60 FPS 平滑捲動]</span>
+      </div>
+
+      <div className="lyrics-action-bar" style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+        <button className="btn btn-sm btn-primary" type="button" onClick={onOpenSearchModal}>
+          🔍 搜尋同步歌詞 (LRCLIB)
+        </button>
+        <button className="btn btn-sm" type="button" onClick={onImportLrc}>
+          匯入 LRC
+        </button>
+        <button className="btn btn-sm" type="button" onClick={onExportLrc}>
+          匯出 LRC
+        </button>
       </div>
 
       <div

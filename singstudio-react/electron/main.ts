@@ -86,6 +86,36 @@ ipcMain.handle('app:get-version', () => {
 // YouTube 搜尋代理 (取代 Python server 的 /api/yt/search)
 ipcMain.handle('yt:search', async (_event, query: string) => {
   try {
+    const trimmed = query.trim();
+    // 檢查是否為直接網址或 11 碼 ID
+    const urlMatch = trimmed.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+?&v=|shorts\/|live\/))([a-zA-Z0-9_-]{11})/i);
+    const directVid = urlMatch ? urlMatch[1] : (/^[a-zA-Z0-9_-]{11}$/.test(trimmed) ? trimmed : null);
+
+    if (directVid) {
+      try {
+        const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${directVid}&format=json`);
+        if (oembedRes.ok) {
+          const data: any = await oembedRes.json();
+          return [{
+            id: directVid,
+            title: data.title || `YouTube 影片 (${directVid})`,
+            duration: '直連伴奏',
+            channel: data.author_name || 'YouTube',
+            thumbnail: data.thumbnail_url || `https://i.ytimg.com/vi/${directVid}/hqdefault.jpg`,
+          }];
+        }
+      } catch (err) {
+        console.warn('Electron oEmbed lookup failed:', err);
+      }
+      return [{
+        id: directVid,
+        title: `YouTube 影片 (${directVid})`,
+        duration: '直連伴奏',
+        channel: 'YouTube',
+        thumbnail: `https://i.ytimg.com/vi/${directVid}/hqdefault.jpg`,
+      }];
+    }
+
     const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
     const response = await fetch(searchUrl, {
       headers: {
@@ -118,8 +148,9 @@ ipcMain.handle('yt:search', async (_event, query: string) => {
               const title = vr.title?.runs?.[0]?.text || '';
               const duration = vr.lengthText?.simpleText || '';
               const channel = vr.ownerText?.runs?.[0]?.text || '';
+              const thumbnail = vr.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
               if (vid && title) {
-                results.push({ id: vid, title, duration, channel });
+                results.push({ id: vid, title, duration, channel, thumbnail });
               }
             }
           }
@@ -138,7 +169,8 @@ ipcMain.handle('yt:search', async (_event, query: string) => {
           id: vid,
           title: `YouTube 影片 (${vid})`,
           duration: '未知',
-          channel: 'YouTube'
+          channel: 'YouTube',
+          thumbnail: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
         });
       }
     }
