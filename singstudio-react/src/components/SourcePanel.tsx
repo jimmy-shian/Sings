@@ -197,7 +197,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
         <div className="source-pane active">
           <div
             style={{
-              padding: '16px',
+              padding: '14px',
               background: 'var(--surface-subtle)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius-sm)',
@@ -208,15 +208,15 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
               flexWrap: 'wrap',
             }}
           >
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '16px' }}>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+              <div style={{ fontWeight: 600, fontSize: '15px', wordBreak: 'break-word' }}>
                 卡農經典和弦進行 (C - G - Am - Em - F - C - F - G)
               </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '14.5px', marginTop: '2px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '13.5px', marginTop: '2px' }}>
                 內建 56 秒無損合成伴奏
               </div>
             </div>
-            <button className="btn btn-primary" type="button" onClick={onLoadDemo}>
+            <button className="btn btn-primary" type="button" onClick={onLoadDemo} style={{ whiteSpace: 'nowrap' }}>
               載入示範伴奏
             </button>
           </div>

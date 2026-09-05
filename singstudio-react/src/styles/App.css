@@ -43,23 +43,43 @@
 
 html {
   scroll-behavior: smooth;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   background-color: var(--bg);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.55;
   min-height: 100vh;
   margin: 0;
   padding: 0;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  position: relative;
 }
 
 #root {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 /* ========== 頂部導航列 ========== */
@@ -185,15 +205,18 @@ body {
 /* ========== 工作區雙欄佈局 ========== */
 .workspace-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 @media (max-width: 1024px) {
   .workspace-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -203,6 +226,9 @@ body {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* ========== 面板 ========== */
@@ -213,6 +239,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .panel-equal-height {
@@ -977,9 +1006,23 @@ body {
    行動端 / 小螢幕響應式適配 (@media max-width: 768px)
    ========================================================================== */
 @media (max-width: 768px) {
+  /* 全域縮小顯示與防溢出 */
+  html, body {
+    font-size: 14.5px;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden !important;
+  }
+
+  #root, .app {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+
   /* 頂部導航列：隱藏冗長標語，緊湊品牌與版本號，杜絕右側垂直單字擠壓 */
   .top-nav {
-    padding: max(10px, var(--sat)) 14px 10px 14px;
+    padding: max(10px, var(--sat)) 12px 10px 12px;
     gap: 8px;
   }
 
@@ -1003,12 +1046,77 @@ body {
 
   /* 主內容容器邊距 */
   .main-content {
-    padding: 10px max(10px, var(--sal)) max(24px, calc(12px + var(--sab))) max(10px, var(--sar));
-    gap: 12px;
+    padding: 8px max(8px, var(--sal)) max(24px, calc(12px + var(--sab))) max(8px, var(--sar));
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+    box-sizing: border-box;
   }
 
-  /* 伴奏來源切換頁籤：橫向平滑滑動，不折行 */
+  /* 工作區網格改為單欄，嚴格禁止超出寬度 */
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    gap: 10px;
+  }
+
+  .left-column,
+  .right-column {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    gap: 10px;
+  }
+
+  /* 面板緊湊邊距與邊界約束 */
+  .panel {
+    padding: 12px 10px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .panel-header {
+    padding: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .panel-title {
+    font-size: 14px;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  /* 伴奏來源 vs 同步歌詞 頁籤：手機上 50%/50% 水平平分滿版 */
+  .tab-pill-group {
+    width: 100%;
+    display: flex;
+  }
+
+  .tab-pill-btn {
+    flex: 1;
+    text-align: center;
+    padding: 6px 4px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+
+  #sourceModeBadge {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+
+  /* 伴奏來源切換頁籤：獨立水平捲動容器，不撐大頁面 */
   .tab-group {
+    width: 100%;
+    max-width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
     -webkit-overflow-scrolling: touch;
@@ -1019,16 +1127,50 @@ body {
   .tab-btn {
     flex-shrink: 0;
     white-space: nowrap;
-    padding: 8px 12px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* 時間軸縮放平移控制列：緊湊圖示化，避免寬度超出 */
+  .timeline-zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+
+  .timeline-zoom-controls .btn-sm {
+    padding: 4px 6px;
+    font-size: 11px;
+    min-width: 26px;
+  }
+
+  .zoom-badge {
+    font-size: 11px;
+    padding: 2px 4px;
+    min-width: 30px;
+  }
+
+  /* 通用按鈕縮小適配手機觸控 */
+  .btn {
     font-size: 13px;
+    padding: 7px 12px;
+  }
+
+  .btn-sm {
+    font-size: 12px;
+    padding: 5px 8px;
   }
 
   /* 音軌狀態列：垂直堆疊，按鈕寬度撐滿，文字不重疊 */
   .track-status-bar {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .track-info {
@@ -1036,6 +1178,7 @@ body {
     align-items: flex-start;
     gap: 4px;
     width: 100%;
+    min-width: 0;
   }
 
   .track-title-text {
@@ -1057,13 +1200,7 @@ body {
   .track-actions .btn {
     width: 100%;
     justify-content: center;
-    padding: 10px;
-  }
-
-  /* 工作區網格改為單欄 */
-  .workspace-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    padding: 9px;
   }
 
   /* 音訊測量資訊列垂直展開 */
@@ -1071,7 +1208,10 @@ body {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .metric-group {
@@ -1086,8 +1226,11 @@ body {
 
   /* 即時工具列 */
   .live-audio-toolbar {
-    padding: 10px 12px;
+    padding: 10px;
     gap: 10px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .live-tool-row {
@@ -1114,15 +1257,18 @@ body {
   /* 錄音操作按鈕列：垂直滿寬，便於觸控 */
   .action-bar {
     flex-direction: column;
-    padding: 12px;
+    padding: 10px;
     gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .action-bar .btn {
     width: 100%;
     justify-content: center;
-    padding: 12px;
-    font-size: 15px;
+    padding: 11px;
+    font-size: 14px;
   }
 
   /* Takes 管理清單 */
@@ -1133,23 +1279,50 @@ body {
   }
 
   .take-item {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
+    display: flex;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 10px !important;
   }
 
   .take-info {
+    display: flex;
     justify-content: space-between;
+    align-items: center;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
   }
 
   .take-actions {
+    display: flex;
     width: 100%;
+    gap: 6px;
   }
 
   .take-actions .btn {
     flex: 1;
     justify-content: center;
+    padding: 6px;
+    font-size: 12px;
+  }
+
+  /* 歌詞面板按鈕列自適應 */
+  .lyrics-offset-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .lyrics-offset-bar > div:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
   }
 
   /* 作品庫表格卡片化 (杜絕單字垂直擠壓崩潰) */
@@ -1170,17 +1343,17 @@ body {
     background: var(--surface-subtle);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 14px;
-    margin-bottom: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
   }
 
   .data-table td {
-    padding: 8px 0;
+    padding: 7px 0;
     border-bottom: 1px solid var(--border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 13.5px;
+    font-size: 13px;
     text-align: right;
   }
 
@@ -1188,18 +1361,18 @@ body {
     content: attr(data-label);
     color: var(--text-muted);
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12.5px;
     text-align: left;
     padding-right: 12px;
     flex-shrink: 0;
   }
 
   .data-table td.table-title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--accent);
     border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
+    padding-bottom: 6px;
     margin-bottom: 6px;
     display: block;
     text-align: left;
@@ -1243,7 +1416,7 @@ body {
   }
 
   .modal-body {
-    padding: 14px 12px !important;
+    padding: 12px 10px !important;
   }
 
   .modal-footer {
@@ -1254,5 +1427,48 @@ body {
   .modal-footer .btn {
     width: 100% !important;
     justify-content: center !important;
+  }
+}
+
+/* ==========================================================================
+   超小螢幕特別緊湊化 (@media max-width: 480px)
+   ========================================================================== */
+@media (max-width: 480px) {
+  html, body {
+    font-size: 13.5px;
+  }
+
+  .main-content {
+    padding: 6px max(6px, var(--sal)) max(20px, calc(10px + var(--sab))) max(6px, var(--sar));
+    gap: 8px;
+  }
+
+  .panel {
+    padding: 10px 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  .top-nav {
+    padding: max(8px, var(--sat)) 10px 8px 10px;
+  }
+
+  .logo-text {
+    font-size: 15px;
+  }
+
+  .btn {
+    font-size: 12.5px;
+    padding: 6px 10px;
+  }
+
+  .btn-sm {
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+
+  .timeline-zoom-controls .btn-sm {
+    padding: 3px 5px;
+    font-size: 10px;
+    min-width: 24px;
   }
 }

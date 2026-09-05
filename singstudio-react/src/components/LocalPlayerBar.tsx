@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 interface LocalPlayerBarProps {
   fileName: string;
@@ -60,12 +60,12 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
         </button>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="local-player-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <button
           className={`btn btn-sm ${isPlaying ? 'btn-warning' : 'btn-primary'}`}
           type="button"
           onClick={onTogglePlay}
-          style={{ minWidth: '70px' }}
+          style={{ minWidth: '65px' }}
         >
           {isPlaying ? '暫停' : '▶ 播放'}
         </button>
@@ -77,10 +77,10 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
           step="0.1"
           value={currentTime}
           onChange={(e) => onSeek(Number(e.target.value))}
-          style={{ flex: 1, accentColor: 'var(--accent)' }}
+          style={{ flex: '1 1 140px', accentColor: 'var(--accent)' }}
         />
 
-        <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', minWidth: '95px', textAlign: 'right' }}>
+        <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right', whiteSpace: 'nowrap' }}>
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>

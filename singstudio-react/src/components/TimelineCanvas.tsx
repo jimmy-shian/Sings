@@ -363,15 +363,52 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
     });
   };
 
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    isDraggingRef.current = true;
+    const rect = canvas.getBoundingClientRect();
+    const clickTime = xToTime(touch.clientX - rect.left, rect.width);
+    const { snappedTime, isSnapped } = checkSnap(clickTime);
+    snapInfoRef.current = { isSnapped, snapTime: snappedTime };
+    onSeek(snappedTime);
+
+    if (onSelectTake) {
+      const hit = vocalTakes.find((t) => clickTime >= t.startTime && clickTime <= t.startTime + t.duration);
+      if (hit) onSelectTake(hit.id);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || e.touches.length === 0 || !isDraggingRef.current) return;
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const clickTime = xToTime(touch.clientX - rect.left, rect.width);
+    const { snappedTime, isSnapped } = checkSnap(clickTime);
+    snapInfoRef.current = { isSnapped, snapTime: snappedTime };
+    onSeek(snappedTime);
+  };
+
+  const handleTouchEnd = () => {
+    isDraggingRef.current = false;
+    snapInfoRef.current = { isSnapped: false, snapTime: 0 };
+  };
+
   return (
     <div className="visualizer-card" style={{ position: 'relative', width: '100%', height: '100%', minHeight: '180px' }}>
       <canvas
         ref={canvasRef}
-        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }}
+        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         onWheel={handleWheel}
         onContextMenu={handleContextMenu}
       />

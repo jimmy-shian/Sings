@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import type { VocalTake } from '../types';
 
 interface TakesManagerProps {
@@ -42,18 +42,17 @@ export const TakesManager: React.FC<TakesManagerProps> = ({
             key={take.id}
             className={`take-item ${selectedTakeId === take.id ? 'selected' : ''}`}
             onClick={() => onSelectTake(take.id)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', marginBottom: '6px', borderRadius: 'var(--radius-sm)', border: selectedTakeId === take.id ? '1px solid #10b981' : '1px solid var(--border)', backgroundColor: 'var(--surface-subtle)', cursor: 'pointer' }}
           >
-            <div className="take-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span className="take-id" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Take {idx + 1}</span>
-              <span className="take-duration" style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+            <div className="take-info">
+              <span className="take-id">Take {idx + 1}</span>
+              <span className="take-duration">
                 {formatTime(take.startTime)} ~ {formatTime(take.startTime + take.duration)}
               </span>
-              <span className="take-length" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              <span className="take-length">
                 ({take.duration.toFixed(1)}s)
               </span>
             </div>
-            <div className="take-actions" style={{ display: 'flex', gap: '6px' }}>
+            <div className="take-actions">
               <button
                 className="btn btn-sm"
                 type="button"
