@@ -49,10 +49,34 @@ export const LrcSearchModal: React.FC<LrcSearchModalProps> = ({
   return (
     <div
       className="modal-overlay"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2000,
+        padding: '20px',
+      }}
       onClick={onClose}
     >
       <div
         className="modal-card lrc-modal-card"
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          width: '100%',
+          maxWidth: '650px',
+          maxHeight: '85vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.7)',
+          overflow: 'hidden',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
