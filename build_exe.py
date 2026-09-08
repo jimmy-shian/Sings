@@ -24,17 +24,16 @@ def build():
     print("==================================================")
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    react_dir = os.path.join(base_dir, "singstudio-react")
 
-    if not os.path.exists(os.path.join(react_dir, "package.json")):
-        print(f"[ERROR] 找不到 React 專案目錄: {react_dir}")
+    if not os.path.exists(os.path.join(base_dir, "package.json")):
+        print(f"[ERROR] 找不到 package.json: {base_dir}")
         sys.exit(1)
 
     # 步驟 1: 檢查並安裝 npm 依賴
-    node_modules_dir = os.path.join(react_dir, "node_modules")
+    node_modules_dir = os.path.join(base_dir, "node_modules")
     if not os.path.exists(node_modules_dir):
         print("\n[1/3] 正在安裝 npm 依賴...")
-        result = subprocess.run(["npm", "install"], cwd=react_dir, shell=True)
+        result = subprocess.run(["npm", "install"], cwd=base_dir, shell=True)
         if result.returncode != 0:
             print("[FAIL] npm install 失敗")
             sys.exit(result.returncode)
@@ -43,14 +42,14 @@ def build():
 
     # 步驟 2: 建置 React + Electron 桌面應用
     print("\n[2/3] 正在建置 React 前端並透過 electron-builder 打包...")
-    result = subprocess.run(["npm", "run", "electron:build"], cwd=react_dir, shell=True)
+    result = subprocess.run(["npm", "run", "electron:build"], cwd=base_dir, shell=True)
     if result.returncode != 0:
         print("[FAIL] 建置失敗")
         sys.exit(result.returncode)
 
     # 步驟 3: 複製建置產物至根目錄 dist/
     print("\n[3/3] 正在整理發行執行檔...")
-    release_dir = os.path.join(react_dir, "release")
+    release_dir = os.path.join(base_dir, "release")
     dist_dir = os.path.join(base_dir, "dist")
     os.makedirs(dist_dir, exist_ok=True)
 

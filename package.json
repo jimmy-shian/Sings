@@ -1,18 +1,91 @@
 {
-  "name": "sings",
-  "version": "1.0.0",
-  "description": "SingStudio 專業雙軌音訊工作站",
+  "name": "singstudio",
+  "private": true,
+  "version": "1.0.1",
+  "type": "module",
+  "description": "SingStudio DAW PRO - 專業雙軌音訊工作站 (React + Electron + Capacitor)",
   "repository": {
     "type": "git",
     "url": "https://github.com/jimmy-shian/Sings.git"
   },
-  "main": "index.js",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "build": "echo Web assets in www"
+    "dev": "vite",
+    "electron:dev": "vite --mode development",
+    "build": "tsc -b && vite build && electron-builder",
+    "build:web": "tsc -b && vite build",
+    "build:exe": "python build_exe.py",
+    "build:apk": "python build_apk.py",
+    "build:all": "npm run build:exe && npm run build:apk",
+    "preview": "vite preview",
+    "electron:build": "tsc -b && vite build && electron-builder"
   },
   "dependencies": {
-    "@capacitor/android": "^6.2.0",
-    "@capacitor/cli": "^6.2.0",
-    "@capacitor/core": "^6.2.0"
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-electron": "^1.1.2",
+    "vite-plugin-electron-renderer": "^1.0.0"
+  },
+  "build": {
+    "appId": "com.singstudio.daw",
+    "productName": "SingStudio",
+    "publish": null,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SingStudio DAW PRO",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Windows-x64.${ext}"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
   }
 }

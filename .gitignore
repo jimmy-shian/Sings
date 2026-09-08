@@ -13,11 +13,11 @@ node_modules/
 *.apk
 /package-lock.json
 
-# React 專案編譯產物與依賴
-singstudio-react/dist/
-singstudio-react/dist-electron/
-singstudio-react/release/
-singstudio-react/node_modules/
+# React & Electron 建置產物
+dist-electron/
+release/
+singstudio-react/
+
 
 # Python 快取
 __pycache__/

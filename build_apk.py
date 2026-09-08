@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 SingStudio - 本機 Android APK 編譯建置腳本 (Capacitor + Gradle Release)
@@ -24,27 +24,26 @@ def build():
     print("==================================================")
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    react_dir = os.path.join(base_dir, "singstudio-react")
     www_dir = os.path.join(base_dir, "www")
     android_dir = os.path.join(base_dir, "android")
 
-    # 檢查 React 專案
-    if not os.path.exists(os.path.join(react_dir, "package.json")):
-        print(f"[ERROR] 找不到 React 專案目錄: {react_dir}")
+    # 檢查專案 package.json
+    if not os.path.exists(os.path.join(base_dir, "package.json")):
+        print(f"[ERROR] 找不到 package.json: {base_dir}")
         sys.exit(1)
 
     # 步驟 1: 編譯 React 前端網頁資產
     print("\n[1/5] 編譯 React 前端網頁資產 (npm run build:web)...")
-    res = subprocess.run(["npm", "run", "build:web"], cwd=react_dir, shell=True)
+    res = subprocess.run(["npm", "run", "build:web"], cwd=base_dir, shell=True)
     if res.returncode != 0:
         print("[FAIL] React 前端編譯失敗")
         sys.exit(res.returncode)
 
     # 步驟 2: 同步資產至 www/ 目錄供 Capacitor 使用
     print("\n[2/5] 同步靜態資源至 www/...")
-    react_dist = os.path.join(react_dir, "dist")
+    react_dist = os.path.join(base_dir, "dist")
     if not os.path.exists(react_dist):
-        print(f"[ERROR] 找不到 React 建置產物: {react_dist}")
+        print(f"[ERROR] 找不到建置產物: {react_dist}")
         sys.exit(1)
 
     shutil.rmtree(www_dir, ignore_errors=True)
@@ -60,7 +59,7 @@ def build():
             shutil.copy2(s, d)
 
     # 確保 public/assets 的 icon 也同步
-    public_assets = os.path.join(react_dir, "public", "assets")
+    public_assets = os.path.join(base_dir, "public", "assets")
     if os.path.exists(public_assets):
         shutil.copytree(public_assets, os.path.join(www_dir, "assets"), dirs_exist_ok=True)
 

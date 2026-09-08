@@ -25,27 +25,25 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: singstudio-react/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Dependencies
-        working-directory: singstudio-react
         run: npm ci
 
       - name: Build Windows Standalone & Installer (electron-builder)
-        working-directory: singstudio-react
         run: npm run electron:build -- --publish never
 
       - name: Upload Windows Standalone Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SingStudio-Windows-x64
-          path: singstudio-react/release/SingStudio-Windows-x64.exe
+          path: release/SingStudio-Windows-x64.exe
 
       - name: Upload Windows Setup Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SingStudio-Windows-Setup
-          path: singstudio-react/release/SingStudio-Setup-*.exe
+          path: release/SingStudio-Setup-*.exe
 
   # ==========================================================================
   # 2. 編譯 Android 安裝套件 (.apk)
@@ -61,6 +59,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -72,7 +72,6 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Build React Web App
-        working-directory: singstudio-react
         run: |
           npm ci
           npm run build:web
@@ -81,20 +80,17 @@ jobs:
         run: |
           rm -rf www
           mkdir -p www
-          cp -r singstudio-react/dist/* www/
-          cp -r singstudio-react/public/assets www/ 2>/dev/null || true
+          cp -r dist/* www/
+          cp -r public/assets www/ 2>/dev/null || true
 
-      - name: Initialize Capacitor Android Project
+      - name: Sync Capacitor Android Project
         run: |
-          npm init -y
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init SingStudio com.singstudio.app --web-dir www
-          npx cap add android
+          npx cap sync android
 
       - name: Configure Android App Icon and Permissions
         run: |
           # 替換 Android 應用程式啟動圖示
-          find android/app/src/main/res/ -name "ic_launcher*.png" -exec cp singstudio-react/public/assets/icon.png {} \; 2>/dev/null || true
+          find android/app/src/main/res/ -name "ic_launcher*.png" -exec cp public/assets/icon.png {} \; 2>/dev/null || true
 
           # 加入麥克風錄音與音訊設定權限 (Capacitor 已內建 INTERNET 權限，避免重複宣告警告)
           sed -i '/<manifest/a \    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' android/app/src/main/AndroidManifest.xml
