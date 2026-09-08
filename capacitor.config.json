@@ -1,5 +1,10 @@
 {
   "appId": "com.singstudio.app",
   "appName": "SingStudio",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
 }

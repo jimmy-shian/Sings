@@ -7,11 +7,11 @@ SingStudio - Android Gradle 建置補丁腳本
 import os
 
 def patch_android():
-    # 1. 於 android/gradle.properties 啟用 AndroidX 與 Jetifier
+    # 1. 於 android/gradle.properties 啟用 AndroidX (純 AndroidX 專案無須 Jetifier，且 Jetifier 無法處理新版 byte-buddy 字節碼)
     gradle_props = os.path.join("android", "gradle.properties")
     if os.path.exists(gradle_props):
         with open(gradle_props, "a", encoding="utf-8") as f:
-            f.write("\nandroid.useAndroidX=true\nandroid.enableJetifier=true\n")
+            f.write("\nandroid.useAndroidX=true\nandroid.enableJetifier=false\n")
         print(f"Patched: {gradle_props}")
 
     # 2. 於根目錄 build.gradle 替換所有 kotlin-stdlib-jdk7/8 為統一的 kotlin-stdlib:1.8.22
