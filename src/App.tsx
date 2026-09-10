@@ -542,19 +542,6 @@ function App() {
               <div className="live-audio-toolbar">
                 <div className="live-tool-row">
                   <div className="live-tool-item">
-                    <span className="live-tool-lbl">伴奏音量:</span>
-                    <input
-                      type="range"
-                      className="range-input-sm"
-                      min="0"
-                      max="150"
-                      value={audio.audioState.liveBackingVolume * 100}
-                      onChange={(e) => audio.updateBackingVolume(Number(e.target.value) / 100)}
-                    />
-                    <span className="vol-badge">{Math.round(audio.audioState.liveBackingVolume * 100)}%</span>
-                  </div>
-
-                  <div className="live-tool-item">
                     <button
                       className={`btn btn-sm ${audio.audioState.isVocalCancellationEnabled ? 'btn-primary' : 'btn-outline'}`}
                       type="button"
@@ -563,9 +550,7 @@ function App() {
                       消除人聲: {audio.audioState.isVocalCancellationEnabled ? '開' : '關'}
                     </button>
                   </div>
-                </div>
 
-                <div className="live-tool-row live-tool-monitor-row">
                   <div className="live-tool-item">
                     <button
                       className={`btn btn-sm ${audio.audioState.isMonitoringEnabled ? 'btn-primary' : 'btn-outline'}`}
@@ -575,46 +560,46 @@ function App() {
                       即時耳返: {audio.audioState.isMonitoringEnabled ? '開' : '關'}
                     </button>
                   </div>
-
-                  {audio.audioState.isMonitoringEnabled && (
-                    <div className="monitor-controls-box" style={{ display: 'flex', gap: '10px' }}>
-                      <div className="live-tool-item">
-                        <span className="live-tool-lbl">耳返:</span>
-                        <input
-                          type="range"
-                          className="range-input-sm"
-                          min="0"
-                          max="300"
-                          value={audio.audioState.monitorVolume * 100}
-                          onChange={(e) => audio.updateMonitorVolume(Number(e.target.value) / 100)}
-                        />
-                        <span className="vol-badge">{Math.round(audio.audioState.monitorVolume * 100)}%</span>
-                      </div>
-
-                      <div className="live-tool-item">
-                        <span className="live-tool-lbl">靈敏度:</span>
-                        <input
-                          type="range"
-                          className="range-input-sm"
-                          min="10"
-                          max="200"
-                          value={audio.audioState.micSensitivity * 100}
-                          onChange={(e) => audio.updateMicSensitivity(Number(e.target.value) / 100)}
-                        />
-                        <span className="vol-badge">{Math.round(audio.audioState.micSensitivity * 100)}%</span>
-                      </div>
-
-                      <label className="toggle-control">
-                        <input
-                          type="checkbox"
-                          checked={audio.audioState.isNoiseFilterEnabled}
-                          onChange={audio.toggleNoiseFilter}
-                        />
-                        <span>噪聲門降噪</span>
-                      </label>
-                    </div>
-                  )}
                 </div>
+
+                {audio.audioState.isMonitoringEnabled && (
+                  <div className="monitor-controls-box">
+                    <div className="live-tool-item">
+                      <span className="live-tool-lbl">耳返音量:</span>
+                      <input
+                        type="range"
+                        className="range-input-sm"
+                        min="0"
+                        max="300"
+                        value={audio.audioState.monitorVolume * 100}
+                        onChange={(e) => audio.updateMonitorVolume(Number(e.target.value) / 100)}
+                      />
+                      <span className="vol-badge">{Math.round(audio.audioState.monitorVolume * 100)}%</span>
+                    </div>
+
+                    <div className="live-tool-item">
+                      <span className="live-tool-lbl">靈敏度:</span>
+                      <input
+                        type="range"
+                        className="range-input-sm"
+                        min="10"
+                        max="200"
+                        value={audio.audioState.micSensitivity * 100}
+                        onChange={(e) => audio.updateMicSensitivity(Number(e.target.value) / 100)}
+                      />
+                      <span className="vol-badge">{Math.round(audio.audioState.micSensitivity * 100)}%</span>
+                    </div>
+
+                    <label className="toggle-control">
+                      <input
+                        type="checkbox"
+                        checked={audio.audioState.isNoiseFilterEnabled}
+                        onChange={audio.toggleNoiseFilter}
+                      />
+                      <span>噪聲門降噪</span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               <RecordingControls

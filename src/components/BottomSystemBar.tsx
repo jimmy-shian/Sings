@@ -33,6 +33,10 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState<number>(0);
 
+  // 時間軸左右內距（px），需與 CSS .yt-scrubber-track 的 padding 左右值保持一致，
+  // 讓手指在左右邊緣按壓時仍可精準換算比例，不會因邊框留白而失準
+  const SCRUBBER_EDGE_PAD = 16;
+
   const safeDuration = Math.max(duration, 1);
   const progressPercent = Math.min(100, Math.max(0, (currentTime / safeDuration) * 100));
 
@@ -40,8 +44,10 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
     (clientX: number) => {
       if (!progressBarRef.current) return 0;
       const rect = progressBarRef.current.getBoundingClientRect();
-      const clickX = Math.max(0, Math.min(rect.width, clientX - rect.left));
-      const ratio = clickX / rect.width;
+      // 扣除左右內距後的可操作寬度，使換算基準與視覺軌道一致
+      const usableWidth = Math.max(1, rect.width - SCRUBBER_EDGE_PAD * 2);
+      const clickX = Math.max(0, Math.min(usableWidth, clientX - rect.left - SCRUBBER_EDGE_PAD));
+      const ratio = clickX / usableWidth;
       return ratio * safeDuration;
     },
     [safeDuration]
@@ -61,9 +67,10 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
     }
     if (progressBarRef.current) {
       const rect = progressBarRef.current.getBoundingClientRect();
-      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-      setHoverX(x);
-      setHoverTime((x / rect.width) * safeDuration);
+      const usableWidth = Math.max(1, rect.width - SCRUBBER_EDGE_PAD * 2);
+      const x = Math.max(0, Math.min(usableWidth, e.clientX - rect.left - SCRUBBER_EDGE_PAD));
+      setHoverX(SCRUBBER_EDGE_PAD + x);
+      setHoverTime((x / usableWidth) * safeDuration);
     }
   };
 
@@ -131,34 +138,29 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
 
       {/* 底部系統顯示器主體 (Mini Player Bar) */}
       <div className="bottom-system-bar-content">
-        {/* 左側：曲名、狀態與時鐘 */}
-        <div className="bottom-bar-left">
-          <div className="bottom-bar-title-row">
-            <span
-              className="bottom-bar-pulse-dot"
-              style={{ backgroundColor: statusColor }}
-            />
-            <span className="bottom-bar-title" title={title}>
-              {title || (sourceMode === 'youtube' ? 'YouTube 伴奏' : '未載入伴奏音訊')}
+        {/* 行1：標題 + 時間 + 狀態 badge 並排 */}
+        <div className="bottom-bar-info-row">
+          <span
+            className="bottom-bar-pulse-dot"
+            style={{ backgroundColor: statusColor }}
+          />
+          <span className="bottom-bar-title" title={title}>
+            {title || (sourceMode === 'youtube' ? 'YouTube 伴奏' : '未載入伴奏音訊')}
+          </span>
+          <span className="bottom-bar-time">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+          <span className="bottom-bar-status-badge" style={{ color: statusColor }}>
+            {statusLabel}
+          </span>
+          {isRecording && (
+            <span className="bottom-bar-level-badge">
+              麥克風: {inputLevel.toFixed(0)} dB
             </span>
-          </div>
-
-          <div className="bottom-bar-meta-row">
-            <span className="bottom-bar-time">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
-            <span className="bottom-bar-status-badge" style={{ color: statusColor }}>
-              {statusLabel}
-            </span>
-            {isRecording && (
-              <span className="bottom-bar-level-badge">
-                麥克風: {inputLevel.toFixed(0)} dB
-              </span>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* 右側：影音控制操作按鈕組 */}
+        {/* 行2：控制按鈕組 */}
         <div className="bottom-bar-right">
           {/* 快退 5s */}
           <button

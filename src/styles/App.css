@@ -412,6 +412,15 @@ body {
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  margin: 0;
+  /* 與 .panel-header 的左右 padding (16px) 視覺對齊：
+     扣除 .tab-btn 自身的 1px 邊框 (15px + 1px border = 16px) */
+  padding: 0 15px;
+}
+
+.source-tab-group {
+  margin: 0 0 12px;
 }
 
 .tab-group::-webkit-scrollbar {
@@ -709,7 +718,7 @@ body {
 }
 
 .source-tab-group {
-  margin-bottom: 12px;
+  margin: 0 0 12px;
 }
 
 .demo-banner {
@@ -1230,12 +1239,6 @@ body {
   flex-wrap: wrap;
 }
 
-.live-tool-monitor-row {
-  background: var(--surface-subtle);
-  padding: 10px;
-  border-radius: var(--radius-sm);
-}
-
 .live-tool-item {
   display: flex;
   align-items: center;
@@ -1268,6 +1271,10 @@ body {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+  background: var(--surface-subtle);
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
 }
 
 .toggle-control {
@@ -1802,6 +1809,10 @@ body {
   }
 
   .panel-header {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
     padding: 8px 10px;
     gap: 6px;
     flex-wrap: nowrap;
@@ -1837,15 +1848,24 @@ body {
     padding: 2px 6px;
   }
 
-  /* 伴奏來源切換頁籤：獨立水平捲動容器，不撐大頁面 */
+  /* 伴奏來源切換頁籤：獨立水平捲動容器，不撐大頁面。
+     與手機版 .panel-header (8px 10px) 視覺對齊：
+     扣除 .tab-btn 自身 1px 邊框，9px + 1px border = 10px，
+     與 .panel-header 左右 10px 內距精準對齊；gap/margin 與 header 統一 */
   .tab-group {
     width: 100%;
     max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
     overflow-x: auto;
     flex-wrap: nowrap;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
+    padding: 0 9px 8px;
     gap: 6px;
+  }
+
+  .source-tab-group {
+    margin: 0 0 10px;
   }
 
   .tab-btn {
@@ -1958,14 +1978,15 @@ body {
   }
 
   .live-tool-row {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
     gap: 10px;
+    flex-wrap: wrap;
   }
 
   .live-tool-item {
-    justify-content: space-between;
-    width: 100%;
+    width: auto;
   }
 
   .live-tool-item .range-input-sm {
@@ -1974,7 +1995,7 @@ body {
   }
 
   .monitor-controls-box {
-    justify-content: space-between;
+    justify-content: flex-start;
     width: 100%;
   }
 
@@ -2361,6 +2382,16 @@ body {
   .lyrics-action-bar .btn {
     flex: 1 1 100% !important;
   }
+
+  /* 超小螢幕：底部懸浮播放器更緊湊，避免右側按鈕擠壓左側時間顯示 */
+  .bottom-system-bar-content {
+    padding: 6px 8px calc(6px + var(--sab)) 8px !important;
+    gap: 6px !important;
+  }
+
+  .bottom-bar-right {
+    gap: 4px !important;
+  }
 }
 
 /* ==========================================================================
@@ -2459,7 +2490,14 @@ body {
 
 @media (max-width: 768px) {
   .main-content {
-    padding-bottom: calc(85px + var(--sab)) !important;
+    /* 預留底部空間：浮動播放器實際高度 (時間軸 + 標題時間行 + 按鈕行 ≈ 90px)
+       加上 Android 導覽列安全區域 (var(--sab))，避免底部內容被遮擋 */
+    padding-bottom: calc(90px + var(--sab)) !important;
+  }
+
+  /* 作品庫面板額外增加底部緩衝，確保最後一筆作品卡片不被浮動播放器遮擋 */
+  .library-panel {
+    margin-bottom: 8px;
   }
 
   .bottom-system-bar-container {
@@ -2488,14 +2526,17 @@ body {
     display: flex;
     align-items: center;
     margin-top: -6px;
-    padding: 4px 0;
+    /* 左右各保留 16px 可操作空間，避免手指在邊緣難以精準拖曳
+       (需與 BottomSystemBar.tsx 的 SCRUBBER_EDGE_PAD 保持一致) */
+    padding: 4px 16px;
+    box-sizing: border-box;
   }
 
   .yt-scrubber-track::before {
     content: '';
     position: absolute;
-    left: 0;
-    right: 0;
+    left: 16px;
+    right: 16px;
     height: 3px;
     background: rgba(255, 255, 255, 0.2);
     transition: height 0.15s ease;
@@ -2552,27 +2593,17 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.15);
   }
 
-  /* 底部列內容 */
+  /* 底部列內容：垂直排列，標題+時間一行、按鈕一行 */
   .bottom-system-bar-content {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     padding: 6px 12px calc(6px + var(--sab)) 12px;
-    gap: 8px;
-    min-height: 52px;
+    gap: 6px;
     box-sizing: border-box;
   }
 
-  .bottom-bar-left {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1 1 0%;
-    overflow: hidden;
-  }
-
-  .bottom-bar-title-row {
+  /* 行1：圓點 + 標題 + 時間 + 狀態 badge 並排，標題可截斷、時間不截斷 */
+  .bottom-bar-info-row {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -2594,20 +2625,13 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .bottom-bar-meta-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    white-space: nowrap;
-    overflow: hidden;
+    min-width: 0;
   }
 
   .bottom-bar-time {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
@@ -2627,11 +2651,13 @@ body {
     flex-shrink: 0;
   }
 
+  /* 行2：控制按鈕組，置中排列 */
   .bottom-bar-right {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    flex-shrink: 0;
+    width: 100%;
   }
 
   .bottom-bar-btn {

@@ -99,7 +99,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
         </span>
       </div>
 
-      <div className="tab-group" style={{ marginBottom: '12px' }}>
+      <div className="tab-group source-tab-group">
         <button
           className={`tab-btn ${sourceMode === 'local' ? 'active' : ''}`}
           type="button"

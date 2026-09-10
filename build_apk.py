@@ -9,6 +9,7 @@ import os
 import sys
 import subprocess
 import shutil
+import tempfile
 
 # 支援 Windows 控制台 UTF-8
 if sys.platform == 'win32':
@@ -26,6 +27,24 @@ def build():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     www_dir = os.path.join(base_dir, "www")
     android_dir = os.path.join(base_dir, "android")
+    dist_dir = os.path.join(base_dir, "dist")
+
+    # Vite 的 emptyOutDir 會在前端建置時清空 dist/；先將既有 EXE 二進位
+    # 備份到系統暫存目錄，讓「全部建置」先編譯 Windows EXE、再編譯 APK
+    # 時不會遺失 EXE 產物。完成後再完整複製回去（不只依賴 release/）。
+    exe_backup_dir = tempfile.mkdtemp(prefix="singstudio_exe_backup_")
+    preserved_exes = []
+    if os.path.exists(dist_dir):
+        for item in os.listdir(dist_dir):
+            src = os.path.join(dist_dir, item)
+            if item.lower().endswith('.exe') and os.path.isfile(src):
+                try:
+                    shutil.copy2(src, os.path.join(exe_backup_dir, item))
+                    preserved_exes.append(item)
+                except Exception as e:
+                    print(f"  [WARN] 備份 {item} 失敗: {e}")
+        if preserved_exes:
+            print(f"  已備份既有 EXE 至暫存區: {', '.join(preserved_exes)}")
 
     # 檢查專案 package.json
     if not os.path.exists(os.path.join(base_dir, "package.json")):
@@ -98,7 +117,6 @@ def build():
         sys.exit(res.returncode)
 
     # 複製輸出 APK 到 dist/
-    dist_dir = os.path.join(base_dir, "dist")
     os.makedirs(dist_dir, exist_ok=True)
 
     apk_source = os.path.join(android_dir, "app", "build", "outputs", "apk", "release", "app-release.apk")
@@ -106,10 +124,46 @@ def build():
 
     if os.path.exists(apk_source):
         shutil.copy2(apk_source, apk_dest)
+        # Vite 建置已清空 dist/，將備份的 Windows EXE 實體複製回去，
+        # 並額外把 release/ 內最新 EXE 一併同步至 dist/，確保一鍵包裝後
+        # dist/ 同時保留 APK + EXE。
+        restored_exes = []
+        for exe_name in preserved_exes:
+            backup_exe = os.path.join(exe_backup_dir, exe_name)
+            exe_dest = os.path.join(dist_dir, exe_name)
+            if os.path.exists(backup_exe) and not os.path.exists(exe_dest):
+                try:
+                    shutil.copy2(backup_exe, exe_dest)
+                except Exception as e:
+                    print(f"  [WARN] 還原 {exe_name} 失敗: {e}")
+        release_dir = os.path.join(base_dir, "release")
+        if os.path.isdir(release_dir):
+            for item in os.listdir(release_dir):
+                if item.lower().endswith('.exe'):
+                    src_exe = os.path.join(release_dir, item)
+                    dst_exe = os.path.join(dist_dir, item)
+                    if os.path.isfile(src_exe):
+                        try:
+                            if not os.path.exists(dst_exe) or \
+                               os.path.getsize(src_exe) != os.path.getsize(dst_exe):
+                                shutil.copy2(src_exe, dst_exe)
+                        except Exception as e:
+                            print(f"  [WARN] 同步 {item} 失敗: {e}")
+        try:
+            shutil.rmtree(exe_backup_dir, ignore_errors=True)
+        except Exception:
+            pass
+        restored_exes = [
+            name for name in os.listdir(dist_dir)
+            if name.lower().endswith('.exe')
+            and os.path.isfile(os.path.join(dist_dir, name))
+        ]
         print("\n==================================================")
         print("[OK] Android APK 編譯成功！")
         print(f"APK 輸出位置: {apk_dest}")
         print(f"檔案大小: {os.path.getsize(apk_dest) / (1024*1024):.2f} MB")
+        if restored_exes:
+            print(f"已恢復 EXE 至 dist/: {', '.join(restored_exes)}")
         print("您可使用 adb install 或傳輸至 Android 手機/平板直接安裝！")
         print("==================================================")
     else:
