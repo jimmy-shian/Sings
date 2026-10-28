@@ -7,11 +7,9 @@ temp_recordings/
 dist/
 build/
 *.spec
-android/
 www/
 node_modules/
 *.apk
-/package-lock.json
 
 # React & Electron 建置產物
 dist-electron/
@@ -39,3 +37,14 @@ scratch/
 /AD_UNITS_CONFIG.xlsx
 /ad_config.json
 /admob-config.json
+
+# Native build output and local environment
+/android/.gradle/
+/android/.kotlin/
+/android/.idea/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/capacitor-cordova-android-plugins/
+
+/android/app/src/main/assets/

@@ -20,7 +20,12 @@
     "build:apk": "python build_apk.py",
     "build:all": "npm run build:exe && npm run build:apk",
     "preview": "vite preview",
-    "electron:build": "tsc -b && vite build && electron-builder"
+    "electron:build": "tsc -b && vite build && electron-builder",
+    "postinstall": "node tools/ensure-ad-config.cjs",
+    "prebuild": "node tools/ensure-ad-config.cjs",
+    "prebuild:web": "node tools/ensure-ad-config.cjs",
+    "preelectron:build": "node tools/ensure-ad-config.cjs",
+    "predev": "node tools/ensure-ad-config.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",
