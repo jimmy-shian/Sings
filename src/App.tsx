@@ -1,3 +1,5 @@
+import { SplashAd } from './components/SplashAd';
+import { PreRecordingAd } from './components/PreRecordingAd';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { SourcePanel } from './components/SourcePanel';
@@ -125,9 +127,17 @@ function App() {
     }
   }, [sourceMode, youtube.currentTitle]);
 
-  const handleStartRecording = useCallback(async () => {
+  const [showSplashAd, setShowSplashAd] = useState(true);
+  const [showPreRecAd, setShowPreRecAd] = useState(false);
+
+  const startActualRecording = useCallback(async () => {
+    setShowPreRecAd(false);
     await audio.startRecording(timeline.timelineState.currentTime);
   }, [audio, timeline.timelineState.currentTime]);
+
+  const handleStartRecording = useCallback(async () => {
+    setShowPreRecAd(true);
+  }, []);
 
   const handleFinishRecording = useCallback(() => {
     audio.finishRecording();
@@ -721,6 +731,12 @@ function App() {
           onToggleRecord={handleToggleRecord}
         />
       </main>
+
+      {/* yesolve studio 開場廣告覆蓋層（聲學青雙軌工作站主題） */}
+      {showSplashAd && <SplashAd onFinish={() => setShowSplashAd(false)} appName="SingStudio DAW" />}
+
+      {/* 開唱前預備贊助廣告（倒數結束後自動開始錄音） */}
+      <PreRecordingAd visible={showPreRecAd} onFinish={startActualRecording} />
     </div>
   );
 }

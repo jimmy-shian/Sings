@@ -78,35 +78,9 @@ def create_app_icon(output_path, size=512):
     print(f"[OK] 生成圖示: {output_path} ({size}x{size})")
 
 def generate_keystore(keystore_path):
-    # 檢查 keytool 是否可用
-    try:
-        if os.path.exists(keystore_path):
-            print(f"[INFO] Keystore 已存在: {keystore_path}")
-            return True
+    # Signing key is centrally managed; never generate project copies.
+    return os.path.isfile(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'keystores', 'release-key.jks'))
 
-        cmd = [
-            "keytool",
-            "-genkeypair",
-            "-v",
-            "-keystore", keystore_path,
-            "-alias", "mykey",
-            "-keyalg", "RSA",
-            "-keysize", "2048",
-            "-validity", "10000",
-            "-storepass", "123456",
-            "-keypass", "123456",
-            "-dname", "CN=SingStudio, OU=App, O=SingStudio, L=Taipei, ST=Taiwan, C=TW"
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode == 0:
-            print(f"[OK] 成功生成固定簽名金鑰: {keystore_path} (alias: mykey, pass: 123456)")
-            return True
-        else:
-            print(f"[WARN] keytool 執行失敗: {res.stderr}")
-            return False
-    except FileNotFoundError:
-        print("[WARN] 系統未安裝 keytool (Java SDK)。將在 GitHub Actions 雲端建置時使用 Java 生成。")
-        return False
 
 def main():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
