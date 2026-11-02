@@ -1,29 +1,50 @@
 import adResetConfig from '../../ad-reset-config.json';
 import React, { useState, useEffect, useRef } from 'react';
-import { showStartupAppOpenAd } from '../lib/startup-ad';
+import { showNativeAdInSlot, hideNativeAdInSlot } from '../lib/startup-ad';
+import { AdSenseSlot } from './AdSenseSlot';
+import '../styles/ad.css';
 
 interface SplashAdProps {
   onFinish: () => void;
   appName?: string;
 }
 
-export const SplashAd: React.FC<SplashAdProps> = ({ onFinish, appName = "SingStudio DAW" }) => {
+/** 統一倒數長度（秒） */
+const AD_DURATION = 5;
+/** 後門略過：5 秒內累計 5 次點擊 */
+const BACKDOOR_WINDOW = 5000;
+const BACKDOOR_CLICKS = 5;
+
+/**
+ * 開場廣告：直接沿用 SingStudio 的「混音控制台」語言。
+ * 面板 + 音軌 VU 錶 + 走帶列，倒數以時間軸（線性）呈現，
+ * 全部樣式取自 App.css 的 CSS 變數，看起來就是錄音室裡的一塊面板。
+ */
+export const SplashAd: React.FC<SplashAdProps> = ({ onFinish, appName = 'SingStudio DAW' }) => {
   if (typeof window !== 'undefined' && adResetConfig.token && localStorage.getItem('yesolve_ad_bypass_reset_token') !== adResetConfig.token) {
     localStorage.setItem('yesolve_ad_bypass', 'false');
     localStorage.setItem('yesolve_ad_bypass_reset_token', adResetConfig.token);
   }
   const isBypassed = typeof window !== 'undefined' && localStorage.getItem('yesolve_ad_bypass') === 'true';
 
-  const [countdown, setCountdown] = useState(5);
+  const [countdown, setCountdown] = useState(AD_DURATION);
   const clickTimestampsRef = useRef<number[]>([]);
+  /** 廣告槽：原生平台上由 StartupAdPlugin 在這個位置放真正的 AdMob 原生進階廣告 */
+  const adSlotRef = useRef<HTMLDivElement | null>(null);
+
+  // 原生平台：廣告槽位置由 StartupAdPlugin 放真正的 AdMob 原生進階廣告。
+  // 只在略過狀態變更時掛載／卸載，不隨父層重繪重新請求廣告。
+  useEffect(() => {
+    if (isBypassed) return;
+    showNativeAdInSlot(adSlotRef.current);
+    return () => hideNativeAdInSlot();
+  }, [isBypassed]);
 
   useEffect(() => {
     if (isBypassed) {
       onFinish();
       return;
     }
-
-    showStartupAppOpenAd();
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -41,12 +62,13 @@ export const SplashAd: React.FC<SplashAdProps> = ({ onFinish, appName = "SingStu
 
   if (isBypassed) return null;
 
+  // 後門略過：5 秒內累計 5 次點擊（面板標頭 / 走帶列）
   const handleBackdoorClick = () => {
     const now = Date.now();
-    clickTimestampsRef.current = clickTimestampsRef.current.filter((t) => now - t <= 3000);
+    clickTimestampsRef.current = clickTimestampsRef.current.filter((t) => now - t <= BACKDOOR_WINDOW);
     clickTimestampsRef.current.push(now);
 
-    if (clickTimestampsRef.current.length >= 5) {
+    if (clickTimestampsRef.current.length >= BACKDOOR_CLICKS) {
       if (typeof window !== 'undefined') {
         localStorage.setItem('yesolve_ad_bypass', 'true');
       }
@@ -54,95 +76,71 @@ export const SplashAd: React.FC<SplashAdProps> = ({ onFinish, appName = "SingStu
     }
   };
 
+  const elapsed = AD_DURATION - countdown;
+  const mm = Math.floor(elapsed / 60);
+  const ss = String(elapsed % 60).padStart(2, '0');
+
   return (
-    <div 
-      className="fixed inset-0 z-[999999] pointer-events-auto bg-[#07090E] text-slate-200 flex flex-col justify-between p-6 select-none font-sans"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Top DAW Transport Bar */}
-      <div className="flex items-center justify-between w-full max-w-md mx-auto">
-        <div 
-          onClick={handleBackdoorClick}
-          className="flex items-center space-x-2.5 cursor-default select-none active:opacity-90"
-        >
-          <div className="w-7 h-7 rounded border border-cyan-800/40 bg-[#0F1420] flex items-center justify-center text-cyan-400">
-            {/* Waveform glyph */}
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M3 12h3l3-8 4 16 3-8h5" />
-            </svg>
+    <div className="sing-ad-root" onClick={(e) => e.stopPropagation()}>
+      {/* 混音台面板 */}
+      <div className="sing-ad-console">
+        {/* 面板標頭（= .panel-header） */}
+        <div className="sing-ad-console-head" onClick={handleBackdoorClick}>
+          <div className="sing-ad-console-title">
+            <span className="sing-ad-rec-dot" />
+            <span className="sing-ad-track-name" style={{ fontSize: 15, color: 'var(--text-primary)' }}>
+              {appName}
+            </span>
           </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-100 font-mono tracking-tight">{appName}</div>
-            <div className="text-[10px] text-slate-500 font-mono">DAW_SESSION_READY</div>
+          <span className="sing-ad-panel-tag">SPONSORED</span>
+        </div>
+
+        {/* 時間軸式倒數 */}
+        <div className="sing-ad-timeline" aria-label={`剩餘 ${countdown} 秒`}>
+          <div
+            className="sing-ad-timeline-fill"
+            style={{ width: `${(countdown / AD_DURATION) * 100}%` }}
+          />
+        </div>
+
+        {/* 廣告槽 */}
+        <div className="sing-ad-slot" ref={adSlotRef}>
+          <AdSenseSlot slotKey="splash" />
+        </div>
+
+        {/* 雙軌 VU 電平錶（= .audio-metrics-bar） */}
+        <div className="sing-ad-tracks">
+          <div className="sing-ad-track">
+            <span className="sing-ad-track-name">TRK 01 · VOCAL</span>
+            <span className="sing-ad-vu">
+              <span className="sing-ad-vu-fill" style={{ width: '78%' }} />
+            </span>
+            <span className="sing-ad-db">-12dB</span>
+          </div>
+          <div className="sing-ad-track">
+            <span className="sing-ad-track-name">TRK 02 · BACKING</span>
+            <span className="sing-ad-vu">
+              <span className="sing-ad-vu-fill" style={{ width: '46%' }} />
+            </span>
+            <span className="sing-ad-db">-18dB</span>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-          <div className="px-2 py-0.5 rounded bg-[#0F1420] border border-slate-800 text-[11px] font-mono text-slate-400">
-            {countdown > 0 ? `REC 0${countdown}s` : 'MONITOR ›'}
+        {/* 走帶控制列（= .live-audio-toolbar） */}
+        <div className="sing-ad-transport" onClick={handleBackdoorClick}>
+          <div className="sing-ad-time-group">
+            <span className="sing-ad-time-lbl">ELAPSED</span>
+            <span className="sing-ad-time">{`${mm}:${ss}`}</span>
+            <span className="sing-ad-time-lbl">/ 剩餘 {countdown}s</span>
           </div>
-        </div>
-      </div>
-
-      {/* Center: Dual-Track Audio Wave & VU Peak Monitor */}
-      <div 
-        onClick={handleBackdoorClick}
-        className="w-full max-w-md mx-auto my-auto bg-[#0D121B] border border-slate-800 rounded-lg p-5 cursor-default font-mono"
-      >
-        {/* Track Monitor Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3.5 text-xs">
-          <div className="flex items-center space-x-2 text-slate-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-            <span>MASTER_BUS_INPUT</span>
-          </div>
-          <span className="text-[10px] text-slate-500">SPONSORED</span>
-        </div>
-
-        {/* Ad Container */}
-        <div className="w-full bg-[#07090E] rounded border border-slate-800/80 p-2 mb-3.5 overflow-hidden">
-          <ins
-            className="adsbygoogle"
-            style={{ display: 'block', width: '100%', height: '120px' }}
-            data-ad-client="ca-pub-2415998114933157"
-            data-ad-slot="(待補)"
-            data-ad-format="auto"
-            data-full-width-responsive="true"
-          ></ins>
-        </div>
-
-        {/* Audio Channel Tracks */}
-        <div className="space-y-2 text-[11px]">
-          <div className="flex items-center justify-between p-2 rounded bg-[#07090E] border border-slate-800/60">
-            <span className="text-slate-400">TRK 01 · VOCAL MIC</span>
-            <div className="flex items-center space-x-1">
-              <span className="w-12 h-1.5 rounded-sm bg-slate-800 overflow-hidden flex">
-                <span className="w-3/4 bg-cyan-500"></span>
-              </span>
-              <span className="text-[10px] text-slate-500">-12dB</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-between p-2 rounded bg-[#07090E] border border-slate-800/60">
-            <span className="text-slate-400">TRK 02 · BACKING TRACK</span>
-            <div className="flex items-center space-x-1">
-              <span className="w-12 h-1.5 rounded-sm bg-slate-800 overflow-hidden flex">
-                <span className="w-1/2 bg-slate-600"></span>
-              </span>
-              <span className="text-[10px] text-slate-500">-18dB</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-3.5 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-500">
-          <span>LOW LATENCY PCM · 48KHZ</span>
-          <span>AD · 5677764204</span>
+          <span className="sing-ad-rec-btn">
+            <span className="sing-ad-rec-dot-sm" />
+            錄音就緒
+          </span>
         </div>
       </div>
 
-      {/* Bottom Signature */}
-      <div className="w-full max-w-md mx-auto text-center font-mono">
-        <span className="text-[11px] text-slate-600">yesolve studio</span>
-      </div>
+      <div className="sing-ad-foot">yesolve studio</div>
     </div>
   );
 };

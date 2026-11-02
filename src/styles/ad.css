@@ -1,0 +1,395 @@
+/* ============================================================================
+   SingStudio 廣告畫面 v3.1
+   ---------------------------------------------------------------------------
+   不使用 Tailwind。本檔的視覺語言直接取自 App 本身的錄音室 UI：
+     .panel / .panel-header / .panel-tag   → 混音台面板
+     .track-status-bar / .status-indicator → 音軌列
+     .audio-metrics-bar / .vu-meter-*      → VU 電平錶
+     .live-audio-toolbar / .btn-record     → 走帶控制列
+     .modal-overlay / .modal-card          → 彈窗
+   色彩一律取用 styles/App.css 的 CSS 變數。
+   ========================================================================== */
+
+/* ---------- 滿版底層 ---------- */
+.sing-ad-root {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: calc(var(--sat) + 18px) max(20px, var(--sar)) calc(var(--sab) + 16px) max(20px, var(--sal));
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  user-select: none;
+  -webkit-user-select: none;
+  animation: singAdFadeIn 0.18s ease-out;
+}
+
+@keyframes singAdFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------- 混音台面板（= .panel） ---------- */
+.sing-ad-console {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 面板標頭（= .panel-header） */
+.sing-ad-console-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sing-ad-console-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+/* = .status-indicator.recording */
+.sing-ad-rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+  animation: singAdPulse 1s infinite;
+}
+
+@keyframes singAdPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* = .panel-tag */
+.sing-ad-panel-tag {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface-highlight);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ---------- 時間軸式倒數（= App 的時間軸，線性） ---------- */
+.sing-ad-timeline {
+  position: relative;
+  height: 4px;
+  background: var(--surface-highlight);
+  overflow: hidden;
+}
+
+.sing-ad-timeline-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s linear;
+}
+
+/* ---------- 廣告槽 ---------- */
+.sing-ad-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 118px;
+  padding: 12px 16px;
+  background: var(--bg);
+  box-sizing: border-box;
+}
+
+.sing-ad-slot ins {
+  display: block;
+  width: 100%;
+}
+
+/* 佔位板：避免出現永遠空白的死 <ins> 框 */
+.sing-ad-placeholder {
+  width: 100%;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+  padding: 14px;
+}
+
+.sing-ad-placeholder-bar {
+  width: 110px;
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+  opacity: 0.6;
+  animation: singAdVu 1.6s ease-in-out infinite;
+}
+
+@keyframes singAdVu {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.75; }
+}
+
+.sing-ad-placeholder-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ---------- 音軌列 + VU 電平錶（= .track-status-bar / .vu-meter-*） ---------- */
+.sing-ad-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface);
+}
+
+.sing-ad-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.sing-ad-track-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* = .vu-meter-track / .vu-meter-fill */
+.sing-ad-vu {
+  flex: 1;
+  height: 8px;
+  min-width: 60px;
+  background: var(--surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sing-ad-vu-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+}
+
+.sing-ad-db {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 48px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ---------- 走帶控制列（= .live-audio-toolbar / .btn-record） ---------- */
+.sing-ad-transport {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.sing-ad-time-group {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* = .metric-time-num */
+.sing-ad-time {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.sing-ad-time-lbl {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sing-ad-rec-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sing-ad-rec-dot-sm {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+/* ---------- 署名 ---------- */
+.sing-ad-foot {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+/* ============================================================================
+   開唱前預備廣告：沿用 App 的 .modal-overlay / .modal-card 語言
+   ========================================================================== */
+.sing-ad-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: singAdFadeIn 0.15s ease-out;
+}
+
+.sing-ad-modal-card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  animation: singAdModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes singAdModalIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.sing-ad-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.sing-ad-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text-primary);
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sing-ad-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.sing-ad-modal-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.sing-ad-modal-hint-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+}
+
+.sing-ad-modal-hint-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.sing-ad-modal-hint-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sing-ad-modal-hint-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sing-ad-modal-hint-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sing-ad-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
