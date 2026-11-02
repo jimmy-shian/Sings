@@ -6,9 +6,14 @@ import React from 'react';
 
 interface HeaderProps {
   version: string;
+  libraryOpen: boolean;
+  libraryDisabled: boolean;
+  settingsDisabled: boolean;
+  onToggleLibrary: () => void;
+  onOpenSettings: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ version }) => {
+export const Header: React.FC<HeaderProps> = ({ version, libraryOpen, libraryDisabled, settingsDisabled, onToggleLibrary, onOpenSettings }) => {
   return (
     <header className="top-nav">
       <div className="nav-left">
@@ -25,6 +30,13 @@ export const Header: React.FC<HeaderProps> = ({ version }) => {
 
       <div className="nav-right">
         <span className="nav-hint">專業雙軌卡拉OK錄音系統</span>
+        <button className={`btn btn-sm library-nav-btn${libraryOpen ? ' active' : ''}`} type="button" onClick={onToggleLibrary} disabled={libraryDisabled} aria-label={libraryOpen ? '返回工作區' : '作品庫'}>
+          <span className="library-nav-label-wide">{libraryOpen ? '返回工作區' : '作品庫'}</span>
+          <span className="library-nav-label-compact">{libraryOpen ? '返回' : '作品庫'}</span>
+        </button>
+        <button className="btn btn-sm settings-nav-btn" type="button" onClick={onOpenSettings} disabled={settingsDisabled} aria-label="設定">
+          <span aria-hidden="true">⚙</span><span className="settings-nav-label">設定</span>
+        </button>
       </div>
     </header>
   );

@@ -6,6 +6,7 @@ interface LocalPlayerBarProps {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
+  hasTrack: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onChangeFile: () => void;
@@ -16,6 +17,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
   isPlaying,
   currentTime,
   duration,
+  hasTrack,
   onTogglePlay,
   onSeek,
   onChangeFile,
@@ -33,7 +35,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
             伴奏:
           </span>
           <span className="local-track-name">
-            {fileName}
+            {fileName || '尚未載入伴奏音樂'}
           </span>
         </div>
         <button className="btn btn-sm" type="button" onClick={onChangeFile}>
@@ -46,6 +48,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
           className={`btn btn-sm local-player-play-btn ${isPlaying ? 'btn-warning' : 'btn-primary'}`}
           type="button"
           onClick={onTogglePlay}
+          disabled={!hasTrack}
         >
           {isPlaying ? (
             <>
@@ -72,6 +75,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
           step="0.1"
           value={currentTime}
           onChange={(e) => onSeek(Number(e.target.value))}
+          disabled={!hasTrack}
         />
 
         <span className="local-track-time">

@@ -12,6 +12,10 @@ export function useAudioEngine() {
   const monitorGainRef = useRef<GainNode | null>(null);
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const filterNodeRef = useRef<BiquadFilterNode | null>(null);
+  const backingObjectUrlRef = useRef<string | null>(null);
+  const recordingBackingEnabledRef = useRef(true);
+  const finishResolveRef = useRef<(() => void) | null>(null);
+  const discardActiveTakeRef = useRef(false);
 
   const [audioState, setAudioState] = useState<AudioState>({
     isRecording: false,
@@ -42,18 +46,42 @@ export function useAudioEngine() {
   const [liveVocalWave, setLiveVocalWave] = useState<Float32Array | null>(null);
   const [currentBackingBlob, setCurrentBackingBlob] = useState<Blob | null>(null);
   const [mixCurrentTime, setMixCurrentTime] = useState(0);
+  const vocalTakesRef = useRef<VocalTake[]>([]);
 
   const activeTakeChunksRef = useRef<Blob[]>([]);
-  const recordingStartTimeRef = useRef(0);
+  const recordingActiveDurationRef = useRef(0);
+  const recordingSegmentStartedAtRef = useRef(0);
   const currentTakeStartTimeRef = useRef(0);
   const reRecordLimitTimerRef = useRef<any>(null);
   const animationFrameRef = useRef<number>(0);
+  const levelUpdateRef = useRef<(() => void) | null>(null);
   const timeDataRef = useRef<Float32Array>(new Float32Array(1024));
   const previewAudiosRef = useRef<{ id: number; audio: HTMLAudioElement; startTime: number; duration: number }[]>([]);
   const previewBackingRef = useRef<HTMLAudioElement | null>(null);
+  const previewBackingUrlRef = useRef<string | null>(null);
   const previewRafRef = useRef<number | null>(null);
   const previewStartStampRef = useRef<number>(0);
   const previewStartOffsetRef = useRef<number>(0);
+
+  useEffect(() => {
+    vocalTakesRef.current = vocalTakes;
+  }, [vocalTakes]);
+
+  useEffect(() => {
+    const element = backingAudioRef.current;
+    if (!element) return;
+    const onPlay = () => setAudioState(prev => ({ ...prev, isBackingSoloPlaying: true }));
+    const onPause = () => setAudioState(prev => ({ ...prev, isBackingSoloPlaying: false }));
+    const onEnded = () => setAudioState(prev => ({ ...prev, isBackingSoloPlaying: false, currentTime: element.duration || prev.currentTime }));
+    element.addEventListener('play', onPlay);
+    element.addEventListener('pause', onPause);
+    element.addEventListener('ended', onEnded);
+    return () => {
+      element.removeEventListener('play', onPlay);
+      element.removeEventListener('pause', onPause);
+      element.removeEventListener('ended', onEnded);
+    };
+  }, []);
 
   // 初始化 AudioContext
   const ensureAudioContext = useCallback(async () => {
@@ -160,19 +188,36 @@ export function useAudioEngine() {
     setCurrentBackingBlob(file);
     const url = URL.createObjectURL(file);
 
-    if (backingAudioRef.current) {
-      backingAudioRef.current.src = url;
-    }
+    const element = backingAudioRef.current || new Audio();
+    backingAudioRef.current = element;
+    element.pause();
+    if (backingObjectUrlRef.current) URL.revokeObjectURL(backingObjectUrlRef.current);
+    backingObjectUrlRef.current = url;
+    element.src = url;
+    element.load();
 
     const peaks = await extractWaveformPeaks(file, 800);
     setWaveformPeaks(peaks);
 
-    const tempAudio = new Audio(url);
-    await new Promise((resolve) => {
-      tempAudio.onloadedmetadata = () => resolve(true);
-      tempAudio.onerror = () => resolve(false);
+    const dur = await new Promise<number>((resolve, reject) => {
+      const onLoaded = () => {
+        element.removeEventListener('loadedmetadata', onLoaded);
+        element.removeEventListener('error', onError);
+        if (Number.isFinite(element.duration) && element.duration > 0) resolve(element.duration);
+        else reject(new Error('音訊檔案沒有有效的播放長度'));
+      };
+      const onError = () => {
+        element.removeEventListener('loadedmetadata', onLoaded);
+        element.removeEventListener('error', onError);
+        reject(new Error('瀏覽器無法解碼此音訊檔案'));
+      };
+      if (element.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        onLoaded();
+      } else {
+        element.addEventListener('loadedmetadata', onLoaded, { once: true });
+        element.addEventListener('error', onError, { once: true });
+      }
     });
-    const dur = tempAudio.duration || 60;
 
     setAudioState(prev => ({
       ...prev,
@@ -184,6 +229,27 @@ export function useAudioEngine() {
 
     return dur;
   }, [ensureAudioContext, extractWaveformPeaks]);
+
+  const clearBackingTrack = useCallback(() => {
+    const element = backingAudioRef.current;
+    if (element) {
+      element.pause();
+      element.removeAttribute('src');
+      element.load();
+    }
+    if (backingObjectUrlRef.current) URL.revokeObjectURL(backingObjectUrlRef.current);
+    backingObjectUrlRef.current = null;
+    setCurrentBackingBlob(null);
+    setWaveformPeaks(null);
+    setAudioState(prev => ({ ...prev, currentBackingUrl: null, backingDuration: 0, currentTime: 0, isBackingSoloPlaying: false }));
+  }, []);
+
+  const replaceVocalTakes = useCallback((takes: VocalTake[]) => {
+    setVocalTakes(prev => {
+      for (const take of prev) if (!takes.some(next => next.id === take.id)) URL.revokeObjectURL(take.url);
+      return takes;
+    });
+  }, []);
 
   // 麥克風與監聽節點初始化
   const initMicrophone = useCallback(async () => {
@@ -238,25 +304,25 @@ export function useAudioEngine() {
   }, [audioState.micSensitivity, audioState.isMonitoringEnabled, audioState.monitorVolume, ensureAudioContext]);
 
   // 開始錄音 (支援 Punch-in)
-  const startRecording = useCallback(async (punchInTime = 0) => {
+  const startRecording = useCallback(async (punchInTime = 0, playBacking = true) => {
     const micOk = await initMicrophone();
-    if (!micOk || !micStreamRef.current) return;
+    if (!micOk || !micStreamRef.current) return false;
 
-    const ctx = await ensureAudioContext();
     const stream = micStreamRef.current;
 
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm';
-
-    mediaRecorderRef.current = new MediaRecorder(stream, {
-      mimeType,
-      audioBitsPerSecond: 128000,
-    });
+    const preferredMimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+    const supportedMimeType = preferredMimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+    const recorder = new MediaRecorder(stream, supportedMimeType
+      ? { mimeType: supportedMimeType, audioBitsPerSecond: 128000 }
+      : { audioBitsPerSecond: 128000 });
+    const mimeType = recorder.mimeType || supportedMimeType || 'audio/webm';
+    mediaRecorderRef.current = recorder;
 
     activeTakeChunksRef.current = [];
-    recordingStartTimeRef.current = ctx.currentTime;
+    recordingActiveDurationRef.current = 0;
+    recordingSegmentStartedAtRef.current = performance.now();
     currentTakeStartTimeRef.current = punchInTime;
+    recordingBackingEnabledRef.current = playBacking;
 
     mediaRecorderRef.current.ondataavailable = (e) => {
       if (e.data.size > 0) {
@@ -266,33 +332,43 @@ export function useAudioEngine() {
 
     mediaRecorderRef.current.onstop = async () => {
       const blob = new Blob(activeTakeChunksRef.current, { type: mimeType });
-      const duration = ctx.currentTime - recordingStartTimeRef.current;
       const takeId = Date.now();
 
       if (window.electronAPI) {
         try {
           const buf = await blob.arrayBuffer();
-          await window.electronAPI.writeTempFile(`temp_${takeId}.webm`, buf);
+          const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
+          await window.electronAPI.writeTempFile(`temp_${takeId}.${extension}`, buf);
         } catch (err) {
           console.warn('寫入磁碟暫存失敗:', err);
         }
       }
 
+      if (discardActiveTakeRef.current) {
+        discardActiveTakeRef.current = false;
+        activeTakeChunksRef.current = [];
+        finishResolveRef.current?.();
+        finishResolveRef.current = null;
+        return;
+      }
+
       const newTake: VocalTake = {
         id: takeId,
         startTime: currentTakeStartTimeRef.current,
-        duration: Math.max(0.2, duration),
+        duration: Math.max(0.2, recordingActiveDurationRef.current),
         url: URL.createObjectURL(blob),
         blob,
       };
 
       setVocalTakes(prev => [...prev, newTake]);
       activeTakeChunksRef.current = [];
+      finishResolveRef.current?.();
+      finishResolveRef.current = null;
     };
 
     mediaRecorderRef.current.start(500);
 
-    if (backingAudioRef.current && backingAudioRef.current.src) {
+    if (playBacking && backingAudioRef.current && backingAudioRef.current.src) {
       backingAudioRef.current.currentTime = punchInTime;
       backingAudioRef.current.volume = audioState.liveBackingVolume;
       backingAudioRef.current.play().catch(e => console.warn(e));
@@ -318,11 +394,17 @@ export function useAudioEngine() {
         animationFrameRef.current = requestAnimationFrame(updateLevel);
       }
     };
+    levelUpdateRef.current = updateLevel;
     updateLevel();
-  }, [initMicrophone, ensureAudioContext, audioState.liveBackingVolume]);
+    return true;
+  }, [initMicrophone, audioState.liveBackingVolume]);
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      if (recordingSegmentStartedAtRef.current) {
+        recordingActiveDurationRef.current += (performance.now() - recordingSegmentStartedAtRef.current) / 1000;
+        recordingSegmentStartedAtRef.current = 0;
+      }
       mediaRecorderRef.current.pause();
     }
     if (backingAudioRef.current) {
@@ -335,20 +417,30 @@ export function useAudioEngine() {
   const resumeRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
       mediaRecorderRef.current.resume();
-      if (backingAudioRef.current) {
+      recordingSegmentStartedAtRef.current = performance.now();
+      if (recordingBackingEnabledRef.current && backingAudioRef.current) {
         backingAudioRef.current.play().catch(e => console.warn(e));
       }
       setAudioState(prev => ({ ...prev, isRecording: true, isPaused: false }));
+      levelUpdateRef.current?.();
     }
   }, []);
 
-  const finishRecording = useCallback(() => {
+  const finishRecording = useCallback(() => new Promise<void>((resolve) => {
+    finishResolveRef.current = resolve;
     if (reRecordLimitTimerRef.current) {
       clearTimeout(reRecordLimitTimerRef.current);
       reRecordLimitTimerRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (recordingSegmentStartedAtRef.current) {
+        recordingActiveDurationRef.current += (performance.now() - recordingSegmentStartedAtRef.current) / 1000;
+        recordingSegmentStartedAtRef.current = 0;
+      }
       mediaRecorderRef.current.stop();
+    } else {
+      finishResolveRef.current?.();
+      finishResolveRef.current = null;
     }
     if (backingAudioRef.current) {
       backingAudioRef.current.pause();
@@ -357,7 +449,7 @@ export function useAudioEngine() {
     cancelAnimationFrame(animationFrameRef.current);
     setInputLevel(-60);
     setLiveVocalWave(null);
-  }, []);
+  }), []);
 
   const resetRecording = useCallback(() => {
     if (reRecordLimitTimerRef.current) {
@@ -365,8 +457,13 @@ export function useAudioEngine() {
       reRecordLimitTimerRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      discardActiveTakeRef.current = true;
+      recordingSegmentStartedAtRef.current = 0;
+      recordingActiveDurationRef.current = 0;
       mediaRecorderRef.current.stop();
     }
+    finishResolveRef.current?.();
+    finishResolveRef.current = null;
     if (backingAudioRef.current) {
       backingAudioRef.current.pause();
       backingAudioRef.current.currentTime = 0;
@@ -407,8 +504,10 @@ export function useAudioEngine() {
     if (backingAudioRef.current && backingAudioRef.current.src) {
       backingAudioRef.current.currentTime = startAtSec;
       backingAudioRef.current.volume = audioState.liveBackingVolume;
-      backingAudioRef.current.play().catch(e => console.warn(e));
-      setAudioState(prev => ({ ...prev, isBackingSoloPlaying: true }));
+      backingAudioRef.current.play().catch(e => {
+        setAudioState(prev => ({ ...prev, isBackingSoloPlaying: false }));
+        console.warn('伴奏播放失敗:', e);
+      });
     }
   }, [audioState.liveBackingVolume]);
 
@@ -433,18 +532,23 @@ export function useAudioEngine() {
     }
     if (previewBackingRef.current) {
       previewBackingRef.current.pause();
+      previewBackingRef.current.src = '';
+      previewBackingRef.current = null;
     }
+    if (previewBackingUrlRef.current) URL.revokeObjectURL(previewBackingUrlRef.current);
+    previewBackingUrlRef.current = null;
     previewAudiosRef.current.forEach(item => {
       item.audio.pause();
     });
     setAudioState(prev => ({ ...prev, isPlayingMix: false }));
   }, []);
 
-  const playMixedPreview = useCallback((startAt = 0) => {
+  const playMixedPreview = useCallback((startAt = 0, includeBackingTrack = true) => {
     stopMixedPreview();
 
-    if (currentBackingBlob) {
+    if (includeBackingTrack && currentBackingBlob) {
       const bUrl = URL.createObjectURL(currentBackingBlob);
+      previewBackingUrlRef.current = bUrl;
       const bAudio = new Audio(bUrl);
       bAudio.volume = audioState.backingMuted ? 0 : audioState.backingVolume;
       bAudio.currentTime = startAt;
@@ -463,7 +567,7 @@ export function useAudioEngine() {
     setAudioState(prev => ({ ...prev, isPlayingMix: true }));
 
     const maxDuration = Math.max(
-      audioState.backingDuration,
+      includeBackingTrack ? audioState.backingDuration : 0,
       ...vocalTakes.map(t => t.startTime + t.duration),
       1
     );
@@ -501,37 +605,37 @@ export function useAudioEngine() {
     previewRafRef.current = requestAnimationFrame(updatePreview);
   }, [stopMixedPreview, currentBackingBlob, audioState.backingMuted, audioState.backingVolume, audioState.vocalMuted, audioState.vocalVolume, audioState.backingDuration, audioState.latencyOffsetMs, vocalTakes]);
 
-  const seekMixedPreview = useCallback((time: number) => {
+  const seekMixedPreview = useCallback((time: number, includeBackingTrack = true) => {
     const isPlaying = audioState.isPlayingMix;
     if (isPlaying) {
-      playMixedPreview(time);
+      playMixedPreview(time, includeBackingTrack);
     } else {
       setMixCurrentTime(time);
     }
   }, [audioState.isPlayingMix, playMixedPreview]);
 
-  const toggleMixedPreview = useCallback(() => {
+  const toggleMixedPreview = useCallback((includeBackingTrack = true) => {
     if (audioState.isPlayingMix) {
       stopMixedPreview();
       return false;
     } else {
-      playMixedPreview(mixCurrentTime);
+      playMixedPreview(mixCurrentTime, includeBackingTrack);
       return true;
     }
   }, [audioState.isPlayingMix, stopMixedPreview, playMixedPreview, mixCurrentTime]);
 
-  const exportMixedWavBlob = useCallback(async (): Promise<Blob> => {
+  const exportMixedWavBlob = useCallback(async (includeBackingTrack = true): Promise<Blob> => {
     const ctx = await ensureAudioContext();
     const sampleRate = 44100;
     const totalDuration = Math.max(
-      audioState.backingDuration,
+      includeBackingTrack ? audioState.backingDuration : 0,
       ...vocalTakes.map(t => t.startTime + t.duration),
       1
     );
 
     const offlineCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
 
-    if (currentBackingBlob) {
+    if (includeBackingTrack && currentBackingBlob) {
       try {
         const bArray = await currentBackingBlob.arrayBuffer();
         const bBuffer = await ctx.decodeAudioData(bArray.slice(0));
@@ -655,6 +759,10 @@ export function useAudioEngine() {
     return () => {
       cancelAnimationFrame(animationFrameRef.current);
       if (previewRafRef.current) cancelAnimationFrame(previewRafRef.current);
+      if (previewBackingRef.current) previewBackingRef.current.pause();
+      if (previewBackingUrlRef.current) URL.revokeObjectURL(previewBackingUrlRef.current);
+      if (backingObjectUrlRef.current) URL.revokeObjectURL(backingObjectUrlRef.current);
+      for (const take of vocalTakesRef.current) URL.revokeObjectURL(take.url);
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(t => t.stop());
       }
@@ -674,6 +782,8 @@ export function useAudioEngine() {
     ensureAudioContext,
     initMicrophone,
     loadBackingTrack,
+    clearBackingTrack,
+    replaceVocalTakes,
     playBackingOnly,
     pauseBackingOnly,
     seekBackingOnly,

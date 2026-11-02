@@ -12,12 +12,14 @@ interface ReviewModalProps {
   backingPeaks: Float32Array | null;
   vocalTakes: VocalTake[];
   backingVolume: number;
+  backingVolumeMax: number;
   vocalVolume: number;
   backingMuted: boolean;
   vocalMuted: boolean;
   reverbEnabled: boolean;
   latencyOffsetMs: number;
   defaultTitle: string;
+  sourceMode: 'local' | 'youtube';
   onTogglePlayPreview: () => void;
   onSeekPreview: (time: number) => void;
   onResetPreview: () => void;
@@ -40,12 +42,14 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   backingPeaks,
   vocalTakes,
   backingVolume,
+  backingVolumeMax,
   vocalVolume,
   backingMuted,
   vocalMuted,
   reverbEnabled,
   latencyOffsetMs,
   defaultTitle,
+  sourceMode,
   onTogglePlayPreview,
   onSeekPreview,
   onResetPreview,
@@ -144,7 +148,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         <div className="modal-body" style={{ padding: '20px 24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              雙軌同步時間軸可視化
+              {sourceMode === 'youtube' ? '人聲時間軸（YouTube 伴奏線上同步）' : '雙軌同步時間軸可視化'}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomOut}>-</button>
@@ -169,6 +173,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           </div>
 
           <div
+            className="review-transport"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -197,7 +202,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                     <path d="M8 5v14l11-7z" />
                   </svg>
-                  <span>播放雙軌混音</span>
+                  <span>{sourceMode === 'youtube' ? '播放人聲＋線上伴奏' : '播放雙軌混音'}</span>
                 </>
               )}
             </button>
@@ -224,7 +229,13 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+          {sourceMode === 'youtube' && (
+            <p className="review-source-note" role="note">
+              YouTube 伴奏會在播放器中同步試聽；匯出的 WAV 只包含錄製人聲。
+            </p>
+          )}
+
+          <div className="review-track-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
             <div
               style={{
                 padding: '14px 16px',
@@ -241,7 +252,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
                   </svg>
-                  伴奏軌 (Backing)
+                  {sourceMode === 'youtube' ? 'YouTube 伴奏（線上）' : '伴奏軌 (Backing)'}
                 </span>
                 <button
                   className={`btn btn-sm ${backingMuted ? 'btn-danger' : 'btn-outline'}`}
@@ -256,13 +267,13 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                 <input
                   type="range"
                   min="0"
-                  max="1.5"
+                  max={backingVolumeMax}
                   step="0.01"
                   value={backingVolume}
                   onChange={(e) => onBackingVolumeChange(Number(e.target.value))}
                   style={{ flex: 1 }}
                 />
-                <span className="vol-badge">{Math.round(backingVolume * 100)}%</span>
+                <span className="vol-badge">{Math.round(Math.min(backingVolume, backingVolumeMax) * 100)}%</span>
               </div>
             </div>
 

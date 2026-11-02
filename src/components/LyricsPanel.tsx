@@ -16,8 +16,15 @@ interface LyricsPanelProps {
   onOpenSearchModal: () => void;
   onImportLrc: () => void;
   onExportLrc: () => void;
+  onTranscribeTake: () => void;
+  onOpenSettings: () => void;
+  hasVocalTake: boolean;
+  modelReady: boolean;
+  isTranscribing: boolean;
   onSeekToLyric: (time: number) => void;
   onContextMenu?: (e: React.MouseEvent, info: LyricsContextMenuInfo) => void;
+  readOnly?: boolean;
+  emptyMessage?: string;
 }
 
 export const LyricsPanel: React.FC<LyricsPanelProps> = ({
@@ -33,8 +40,15 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
   onOpenSearchModal,
   onImportLrc,
   onExportLrc,
+  onTranscribeTake,
+  onOpenSettings,
+  hasVocalTake,
+  modelReady,
+  isTranscribing,
   onSeekToLyric,
   onContextMenu,
+  readOnly = false,
+  emptyMessage = '尚未載入動態歌詞。請由上方「搜尋同步歌詞 (LRCLIB)」線上檢索，或「匯入 LRC」本地檔案。',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -59,6 +73,10 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
   }, [currentIndex, leftTab]);
 
   const handleLineContextMenu = (e: React.MouseEvent, line: LyricsLine, index: number) => {
+    if (readOnly) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     if (onContextMenu) {
       onContextMenu(e, {
@@ -116,6 +134,15 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
           </svg>
           <span>匯出 LRC</span>
         </button>
+        <button
+          className="btn btn-sm btn-ai-transcribe"
+          type="button"
+          onClick={modelReady ? onTranscribeTake : onOpenSettings}
+          disabled={!hasVocalTake || isTranscribing}
+          title={modelReady ? '以本機 AI 將選取的人聲錄音轉成同步字幕' : '先到設定下載離線語音模型'}
+        >
+          {isTranscribing ? '辨識歌詞中…' : modelReady ? '錄音轉字幕' : '下載字幕模型'}
+        </button>
       </div>
 
       <div className="lyrics-offset-bar">
@@ -161,7 +188,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
       <div ref={containerRef} className="lyrics-box lyrics-box-tall">
         {lyrics.length === 0 ? (
           <div className="lyrics-empty-placeholder">
-            尚未載入動態歌詞。請由上方「搜尋同步歌詞 (LRCLIB)」線上檢索，或「匯入 LRC」本地檔案。
+            {emptyMessage}
           </div>
         ) : (
           lyrics.map((line, idx) => (
@@ -171,8 +198,9 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
                 if (el) lineRefs.current.set(idx, el);
                 else lineRefs.current.delete(idx);
               }}
-              className={`lyrics-line ${idx === currentIndex ? 'active' : ''} ${idx === selectedLineIndex ? 'selected' : ''}`}
+              className={`lyrics-line ${idx === currentIndex ? 'active' : ''} ${idx === selectedLineIndex ? 'selected' : ''}${readOnly ? ' read-only' : ''}`}
               onClick={() => {
+                if (readOnly) return;
                 setSelectedLineIndex(idx);
                 onSeekToLyric(line.time + offsetSec);
               }}

@@ -1,6 +1,6 @@
 import { SplashAd } from './components/SplashAd';
 import { PreRecordingAd } from './components/PreRecordingAd';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { SourcePanel } from './components/SourcePanel';
 import { LocalPlayerBar } from './components/LocalPlayerBar';
@@ -14,11 +14,14 @@ import { LrcSearchModal } from './components/LrcSearchModal';
 import { TimelineContextMenu } from './components/TimelineContextMenu';
 import { LyricsContextMenu } from './components/LyricsContextMenu';
 import { BottomSystemBar } from './components/BottomSystemBar';
+import { WorkflowTabs, type AppStage } from './components/WorkflowTabs';
+import { SettingsModal } from './components/SettingsModal';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useTimeline } from './hooks/useTimeline';
 import { useLyrics } from './hooks/useLyrics';
 import { useYouTube } from './hooks/useYouTube';
 import { useStorage } from './hooks/useStorage';
+import { useSpeechTranscription, type SpeechChunk } from './hooks/useSpeechTranscription';
 import type { TimelineContextMenuInfo, LyricsContextMenuInfo, VocalTake } from './types';
 import { cleanTrackTitle } from './utils/format';
 import './styles/App.css';
@@ -26,21 +29,75 @@ import './styles/App.css';
 type SourceMode = 'local' | 'youtube';
 type LeftTab = 'source' | 'lyrics';
 
+function createLrcTimestamp(seconds: number) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60).toString().padStart(2, '0');
+  const remainder = (safeSeconds % 60).toFixed(2).padStart(5, '0');
+  return `[${minutes}:${remainder}]`;
+}
+
+function speechChunksToLrc(chunks: SpeechChunk[] | undefined, text: string, offset: number) {
+  if (!chunks?.length) return `${createLrcTimestamp(offset)}${text.trim()}`;
+
+  const lines: { time: number; text: string }[] = [];
+  let phrase = '';
+  let phraseStart = 0;
+  let phraseEnd = 0;
+
+  const flushPhrase = () => {
+    const cleanText = phrase.trim();
+    if (cleanText) lines.push({ time: phraseStart + offset, text: cleanText });
+    phrase = '';
+  };
+
+  for (const chunk of chunks) {
+    const chunkText = chunk.text?.trim();
+    if (!chunkText) continue;
+    const start = typeof chunk.timestamp?.[0] === 'number' ? chunk.timestamp[0] : phraseEnd;
+    const end = typeof chunk.timestamp?.[1] === 'number' ? chunk.timestamp[1] : start;
+    if (!phrase) phraseStart = start;
+    phrase += chunkText;
+    phraseEnd = end;
+    if (/[，。！？!?；;,.]$/.test(chunkText) || phrase.length >= 16 || phraseEnd - phraseStart >= 4.5) flushPhrase();
+  }
+  flushPhrase();
+
+  return lines.length
+    ? lines.map(line => `${createLrcTimestamp(line.time)}${line.text}`).join('\n')
+    : `${createLrcTimestamp(offset)}${text.trim()}`;
+}
+
 function App() {
   const audio = useAudioEngine();
-  const timeline = useTimeline(60);
+  const timeline = useTimeline(0);
   const lyrics = useLyrics();
   const youtube = useYouTube();
   const storage = useStorage();
+  const speech = useSpeechTranscription();
 
   const [version, setVersion] = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.1');
   const [sourceMode, setSourceMode] = useState<SourceMode>('local');
   const [leftTab, setLeftTab] = useState<LeftTab>('source');
   const [localFileName, setLocalFileName] = useState('');
-  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [stage, setStage] = useState<AppStage>('prepare');
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showLrcModal, setShowLrcModal] = useState(false);
   const [timelineContextMenu, setTimelineContextMenu] = useState<TimelineContextMenuInfo | null>(null);
   const [lyricsContextMenu, setLyricsContextMenu] = useState<LyricsContextMenuInfo | null>(null);
+  const libraryReturnStageRef = useRef<AppStage>('prepare');
+  const vocalTakeIdsRef = useRef('');
+  const isSingingMode = stage === 'sing';
+  const showReviewModal = stage === 'review' && !isLibraryOpen;
+
+  useEffect(() => {
+    const ids = audio.vocalTakes.map(take => take.id).join(',');
+    if (ids !== vocalTakeIdsRef.current) {
+      vocalTakeIdsRef.current = ids;
+      const latestTake = audio.vocalTakes[audio.vocalTakes.length - 1];
+      timeline.setSelectedTakeId(latestTake?.id ?? null);
+    }
+  }, [audio.vocalTakes, timeline.setSelectedTakeId]);
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -110,16 +167,24 @@ function App() {
   }, [audio.backingAudioRef, sourceMode, timelineSeek, lyricsUpdateIndex]);
 
   const handleLoadLocalFile = useCallback(async (file: File) => {
+    youtube.pause();
     setSourceMode('local');
     setLocalFileName(file.name);
     const dur = await audio.loadBackingTrack(file);
     timeline.setDuration(dur);
-  }, [audio, timeline]);
+  }, [audio, timeline, youtube]);
 
   const handleYouTubeSearch = useCallback((query: string) => {
+    audio.pauseBackingOnly();
     setSourceMode('youtube');
     youtube.search(query);
-  }, [youtube]);
+  }, [youtube, audio]);
+
+  const handleSourceModeChange = useCallback((mode: SourceMode) => {
+    setSourceMode(mode);
+    if (mode === 'youtube') audio.pauseBackingOnly();
+    else youtube.pause();
+  }, [audio, youtube]);
 
   useEffect(() => {
     if (sourceMode === 'youtube' && youtube.currentTitle) {
@@ -132,17 +197,80 @@ function App() {
 
   const startActualRecording = useCallback(async () => {
     setShowPreRecAd(false);
-    await audio.startRecording(timeline.timelineState.currentTime);
-  }, [audio, timeline.timelineState.currentTime]);
+    const startAt = timeline.timelineState.currentTime;
+    const started = await audio.startRecording(startAt, sourceMode === 'local');
+    if (!started) {
+      alert('無法啟動錄音，請檢查麥克風權限與輸入裝置。');
+      return;
+    }
+    if (sourceMode === 'youtube') {
+      youtube.seekTo(startAt);
+      youtube.play();
+    }
+    setStage('sing');
+  }, [audio, timeline.timelineState.currentTime, sourceMode, youtube]);
 
   const handleStartRecording = useCallback(async () => {
     setShowPreRecAd(true);
   }, []);
 
-  const handleFinishRecording = useCallback(() => {
-    audio.finishRecording();
-    setShowReviewModal(true);
-  }, [audio]);
+  const enterSingingMode = useCallback(() => {
+    setLeftTab('lyrics');
+    setIsLibraryOpen(false);
+    setStage('sing');
+  }, []);
+
+  const exitSingingMode = useCallback(() => {
+    if (audio.audioState.isRecording || audio.audioState.isPaused) return;
+    if (sourceMode === 'youtube') youtube.pause();
+    else audio.pauseBackingOnly();
+    setStage('prepare');
+    setLeftTab('source');
+  }, [audio.audioState.isRecording, audio.audioState.isPaused, audio, sourceMode, youtube]);
+
+  const handleFinishRecording = useCallback(async () => {
+    await audio.finishRecording();
+    if (sourceMode === 'youtube') youtube.pause();
+    setStage('review');
+  }, [audio, sourceMode, youtube]);
+
+  const handlePauseRecording = useCallback(() => {
+    audio.pauseRecording();
+    if (sourceMode === 'youtube') youtube.pause();
+  }, [audio, sourceMode, youtube]);
+
+  const handleResumeRecording = useCallback(() => {
+    audio.resumeRecording();
+    if (sourceMode === 'youtube') youtube.play();
+  }, [audio, sourceMode, youtube]);
+
+  const handleStageChange = useCallback((next: AppStage) => {
+    if (audio.audioState.isRecording || audio.audioState.isPaused) return;
+    if (next === 'review' && audio.vocalTakes.length === 0) return;
+    if (showReviewModal) {
+      audio.stopMixedPreview();
+      youtube.pause();
+    }
+    setIsLibraryOpen(false);
+    setStage(next);
+    if (next === 'prepare') setLeftTab('source');
+    if (next === 'sing') setLeftTab('lyrics');
+  }, [audio, showReviewModal, youtube]);
+
+  const handleToggleLibrary = useCallback(() => {
+    if (audio.audioState.isRecording || audio.audioState.isPaused) return;
+    if (isLibraryOpen) {
+      setIsLibraryOpen(false);
+      setStage(libraryReturnStageRef.current);
+      return;
+    }
+    libraryReturnStageRef.current = stage;
+    if (showReviewModal) {
+      audio.stopMixedPreview();
+      youtube.pause();
+    }
+    setIsLibraryOpen(true);
+  }, [audio, isLibraryOpen, stage, showReviewModal, youtube]);
 
   const isBackingPlaying = sourceMode === 'youtube' ? youtube.isPlaying : audio.audioState.isBackingSoloPlaying;
 
@@ -162,32 +290,61 @@ function App() {
     }
   }, [sourceMode, youtube, audio, timeline.timelineState.currentTime]);
 
-  const handleToggleRecord = useCallback(async () => {
-    if (audio.audioState.isRecording) {
-      handleFinishRecording();
-    } else {
-      await handleStartRecording();
-    }
-  }, [audio.audioState.isRecording, handleFinishRecording, handleStartRecording]);
-
   const handleSaveToLibrary = useCallback(async (title: string) => {
+    const selectedTake = audio.vocalTakes.find(take => take.id === timeline.selectedTakeId)
+      || audio.vocalTakes[audio.vocalTakes.length - 1];
     await storage.saveRecording({
       title,
-      sourceType: audio.audioState.sourceMode,
+      sourceType: sourceMode,
       youtubeId: youtube.currentVideoId || undefined,
       duration: Math.max(audio.audioState.backingDuration, timeline.timelineState.duration),
-      vocalBlob: audio.vocalTakes.length > 0 ? audio.vocalTakes[0].blob : undefined,
-      backingBlob: audio.currentBackingBlob || undefined,
+      vocalBlob: selectedTake?.blob,
+      backingBlob: sourceMode === 'local' ? audio.currentBackingBlob || undefined : undefined,
       lyrics: lyrics.lyricsState.rawLrcText,
       takesCount: audio.vocalTakes.length,
       latencyOffset: audio.audioState.latencyOffsetMs,
     });
     alert('作品已安全寫入本地 IndexedDB 作品庫！');
-  }, [storage, audio, youtube, timeline, lyrics]);
+  }, [storage, audio, youtube, timeline, lyrics, sourceMode]);
+
+  const handleReviewPreviewToggle = useCallback(() => {
+    const isPlaying = audio.toggleMixedPreview(sourceMode === 'local');
+    if (sourceMode === 'youtube') {
+      if (isPlaying) {
+        youtube.seekTo(audio.mixCurrentTime);
+        youtube.play();
+      } else {
+        youtube.pause();
+      }
+    }
+  }, [audio, sourceMode, youtube]);
+
+  const handleReviewSeek = useCallback((time: number) => {
+    timeline.seek(time);
+    lyrics.updateCurrentIndex(time);
+    audio.seekMixedPreview(time, sourceMode === 'local');
+    if (sourceMode === 'youtube') youtube.seekTo(time);
+  }, [audio, lyrics, sourceMode, timeline, youtube]);
+
+  const handleReviewBackingVolumeChange = useCallback((volume: number) => {
+    const nextVolume = sourceMode === 'youtube' ? Math.min(volume, 1) : volume;
+    audio.updateBackingVolume(nextVolume);
+    if (sourceMode === 'youtube') {
+      youtube.setVolume(audio.audioState.backingMuted ? 0 : Math.round(nextVolume * 100));
+    }
+  }, [audio, sourceMode, youtube]);
+
+  const handleReviewBackingMute = useCallback(() => {
+    const nextMuted = !audio.audioState.backingMuted;
+    audio.toggleBackingMute();
+    if (sourceMode === 'youtube') {
+      youtube.setVolume(nextMuted ? 0 : Math.min(100, Math.round(audio.audioState.backingVolume * 100)));
+    }
+  }, [audio, sourceMode, youtube]);
 
   const handleExportWav = useCallback(async () => {
     try {
-      const wavBlob = await audio.exportMixedWavBlob();
+      const wavBlob = await audio.exportMixedWavBlob(sourceMode === 'local');
       const defaultFilename = `SingStudio_${localFileName || 'Master'}_${Date.now()}.wav`;
 
       if (window.electronAPI) {
@@ -212,17 +369,28 @@ function App() {
     } catch (err: any) {
       alert(`匯出失敗: ${err.message}`);
     }
-  }, [audio, localFileName]);
+  }, [audio, localFileName, sourceMode]);
 
   const handleLoadFromLibrary = useCallback(async (id: number) => {
     const full = await storage.getById(id);
     if (!full) return;
 
-    if (full.backingBlob) {
-      await audio.loadBackingTrack(full.backingBlob);
+    setLocalFileName(full.title);
+    if (full.sourceType === 'local') {
+      setSourceMode('local');
+      if (full.backingBlob) await audio.loadBackingTrack(full.backingBlob);
+      else audio.clearBackingTrack();
+      timeline.setDuration(full.duration);
+    } else if (full.sourceType === 'youtube' && full.youtubeId) {
+      audio.clearBackingTrack();
+      setSourceMode('youtube');
+      youtube.loadVideo(full.youtubeId, full.title);
+      timeline.setDuration(full.duration);
     }
     if (full.lyrics) {
       lyrics.parseLRC(full.lyrics);
+    } else {
+      lyrics.clearLyrics();
     }
     if (full.vocalBlob) {
       const take: VocalTake = {
@@ -232,13 +400,41 @@ function App() {
         blob: full.vocalBlob,
         url: URL.createObjectURL(full.vocalBlob),
       };
-      (audio as any).vocalTakes = [take];
+      audio.replaceVocalTakes([take]);
+      timeline.setSelectedTakeId(take.id);
+    } else {
+      audio.replaceVocalTakes([]);
     }
     if (full.latencyOffset) {
       audio.updateLatencyOffset(full.latencyOffset);
     }
-    setShowReviewModal(true);
-  }, [storage, audio, lyrics]);
+    setIsLibraryOpen(false);
+    setStage('review');
+  }, [storage, audio, lyrics, youtube, timeline]);
+
+  const handleTranscribeTake = useCallback(async () => {
+    const selectedTake = audio.vocalTakes.find(take => take.id === timeline.selectedTakeId);
+    const take = selectedTake || audio.vocalTakes[audio.vocalTakes.length - 1];
+    if (!take?.blob) {
+      alert('找不到可辨識的人聲錄音，請先完成錄音或重新載入作品。');
+      return;
+    }
+    if (!speech.modelReady) {
+      setIsSettingsOpen(true);
+      return;
+    }
+    if (lyrics.lyricsState.rawLrcText && !window.confirm('目前已有歌詞，要用語音辨識結果取代嗎？')) return;
+
+    try {
+      const result = await speech.transcribe(take.blob);
+      const lrc = speechChunksToLrc(result.chunks, result.text, take.startTime);
+      lyrics.parseLRC(lrc, timeline.timelineState.duration || take.duration);
+      setLeftTab('lyrics');
+      setStage('prepare');
+    } catch (error) {
+      alert(`語音轉字幕失敗：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [audio.vocalTakes, timeline, speech, lyrics]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -248,11 +444,11 @@ function App() {
       if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
         if (showReviewModal) {
-          audio.toggleMixedPreview();
+          handleReviewPreviewToggle();
         } else if (audio.audioState.isRecording) {
-          audio.pauseRecording();
+          handlePauseRecording();
         } else if (audio.audioState.isPaused) {
-          audio.resumeRecording();
+          handleResumeRecording();
         } else {
           handleToggleBackingPlay();
         }
@@ -261,11 +457,25 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showReviewModal, audio, handleToggleBackingPlay]);
+  }, [showReviewModal, audio, handleReviewPreviewToggle, handleToggleBackingPlay, handlePauseRecording, handleResumeRecording]);
 
   return (
-    <div className="app">
-      <Header version={version} />
+    <div className={`app${isSingingMode ? ' is-singing-mode' : ''}${leftTab === 'lyrics' ? ' is-lyrics-tab' : ''}${sourceMode === 'youtube' ? ' is-youtube-source' : ''}${isLibraryOpen ? ' is-library-open' : ''}`}>
+      <audio ref={audio.backingAudioRef} preload="metadata" className="backing-audio-element" />
+      <Header
+        version={version}
+        libraryOpen={isLibraryOpen}
+        libraryDisabled={audio.audioState.isRecording || audio.audioState.isPaused}
+        settingsDisabled={audio.audioState.isRecording || audio.audioState.isPaused}
+        onToggleLibrary={handleToggleLibrary}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+      <WorkflowTabs
+        stage={stage}
+        disabled={audio.audioState.isRecording || audio.audioState.isPaused}
+        hasTakes={audio.vocalTakes.length > 0}
+        onChange={handleStageChange}
+      />
 
       <main className="main-content">
         <div className="track-status-bar">
@@ -283,10 +493,18 @@ function App() {
           <div className="track-actions">
             <button
               className="btn btn-sm btn-primary"
-              onClick={handleStartRecording}
-              disabled={audio.audioState.isRecording}
+              onClick={() => {
+                if (window.matchMedia('(max-width: 768px)').matches) {
+                  if (isSingingMode) exitSingingMode();
+                  else enterSingingMode();
+                } else {
+                  handleStartRecording();
+                }
+              }}
+              disabled={audio.audioState.isRecording || audio.audioState.isPaused || isLibraryOpen}
             >
-              快速錄製
+              <span className="desktop-record-label">快速錄製</span>
+              <span className="mobile-sing-label">{isSingingMode ? '返回準備' : '進入開唱'}</span>
             </button>
           </div>
         </div>
@@ -296,6 +514,7 @@ function App() {
             {sourceMode === 'local' && (
               <LocalPlayerBar
                 fileName={localFileName}
+                hasTrack={Boolean(audio.currentBackingBlob)}
                 isPlaying={audio.audioState.isBackingSoloPlaying}
                 currentTime={timeline.timelineState.currentTime}
                 duration={timeline.timelineState.duration}
@@ -311,10 +530,10 @@ function App() {
               />
             )}
 
-            <div className={`left-tab-pane ${leftTab === 'source' ? '' : 'offscreen-keep'}`}>
+            <div className={`left-tab-pane source-workspace-pane ${leftTab === 'source' ? '' : 'offscreen-keep'}`}>
               <SourcePanel
                 sourceMode={sourceMode}
-                onSourceModeChange={(m) => setSourceMode(m)}
+                onSourceModeChange={handleSourceModeChange}
                 leftTab={leftTab}
                 onTabChange={setLeftTab}
                 onLoadLocalFile={handleLoadLocalFile}
@@ -328,7 +547,7 @@ function App() {
               />
             </div>
 
-            <div className={`left-tab-pane ${leftTab === 'lyrics' ? '' : 'hidden'}`}>
+            <div className={`left-tab-pane lyrics-workspace-pane ${leftTab === 'lyrics' ? '' : 'hidden'}`}>
               <LyricsPanel
                 leftTab={leftTab}
                 onTabChange={setLeftTab}
@@ -368,14 +587,23 @@ function App() {
                   navigator.clipboard?.writeText(text);
                   alert('LRC 歌詞內容已複製至剪貼簿！');
                 }}
+                onTranscribeTake={handleTranscribeTake}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+                hasVocalTake={audio.vocalTakes.length > 0}
+                modelReady={speech.modelReady}
+                isTranscribing={speech.isTranscribing}
                 onSeekToLyric={handleSeek}
                 onContextMenu={(_e, info) => setLyricsContextMenu(info)}
+                readOnly={audio.audioState.isRecording || audio.audioState.isPaused}
+                emptyMessage={isSingingMode
+                  ? '尚未加入同步歌詞。返回準備頁搜尋或匯入歌詞，也可以直接錄音。'
+                  : undefined}
               />
             </div>
           </div>
 
           <div className="right-column">
-            <div className="panel panel-equal-height">
+            <div className="panel panel-equal-height audio-workspace-panel">
               {/* 波形可視化區：手機端隱藏，桌面端保留 */}
               <div className="timeline-visual-area">
                 <div className="panel-header">
@@ -617,8 +845,8 @@ function App() {
                 isPaused={audio.audioState.isPaused}
                 hasRecording={audio.vocalTakes.length > 0}
                 onStartRecording={handleStartRecording}
-                onPauseRecording={audio.pauseRecording}
-                onResumeRecording={audio.resumeRecording}
+                onPauseRecording={handlePauseRecording}
+                onResumeRecording={handleResumeRecording}
                 onFinishRecording={handleFinishRecording}
                 onResetRecording={audio.resetRecording}
               />
@@ -635,18 +863,21 @@ function App() {
           </div>
         </div>
 
-        <LibraryTable
-          recordings={storage.recordings}
-          onLoadRecording={handleLoadFromLibrary}
-          onDeleteRecording={storage.deleteRecording}
-          onRefresh={storage.refresh}
-        />
+        <div className={`library-view${isLibraryOpen ? '' : ' hidden'}`}>
+          <LibraryTable
+            recordings={storage.recordings}
+            onLoadRecording={handleLoadFromLibrary}
+            onDeleteRecording={storage.deleteRecording}
+            onRefresh={storage.refresh}
+          />
+        </div>
 
         <ReviewModal
           isOpen={showReviewModal}
           onClose={() => {
             audio.stopMixedPreview();
-            setShowReviewModal(false);
+            youtube.pause();
+            setStage('sing');
           }}
           duration={Math.max(audio.audioState.backingDuration, timeline.timelineState.duration)}
           currentTime={audio.mixCurrentTime}
@@ -654,23 +885,36 @@ function App() {
           backingPeaks={audio.waveformPeaks}
           vocalTakes={audio.vocalTakes}
           backingVolume={audio.audioState.backingVolume}
+          backingVolumeMax={sourceMode === 'youtube' ? 1 : 1.5}
           vocalVolume={audio.audioState.vocalVolume}
           backingMuted={audio.audioState.backingMuted}
           vocalMuted={audio.audioState.vocalMuted}
           reverbEnabled={audio.audioState.reverbEnabled}
           latencyOffsetMs={audio.audioState.latencyOffsetMs}
           defaultTitle={localFileName || '我的演唱作品'}
-          onTogglePlayPreview={audio.toggleMixedPreview}
-          onSeekPreview={audio.seekMixedPreview}
-          onResetPreview={() => audio.seekMixedPreview(0)}
-          onBackingVolumeChange={audio.updateBackingVolume}
+          sourceMode={sourceMode}
+          onTogglePlayPreview={handleReviewPreviewToggle}
+          onSeekPreview={handleReviewSeek}
+          onResetPreview={() => handleReviewSeek(0)}
+          onBackingVolumeChange={handleReviewBackingVolumeChange}
           onVocalVolumeChange={audio.updateVocalVolume}
-          onToggleBackingMute={audio.toggleBackingMute}
+          onToggleBackingMute={handleReviewBackingMute}
           onToggleVocalMute={audio.toggleVocalMute}
           onToggleReverb={audio.toggleReverb}
           onLatencyOffsetChange={audio.updateLatencyOffset}
           onSaveToLibrary={handleSaveToLibrary}
           onExportWav={handleExportWav}
+        />
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          isDownloading={speech.isDownloading}
+          modelReady={speech.modelReady}
+          downloadPercent={speech.downloadPercent}
+          downloadFile={speech.downloadFile}
+          error={speech.error}
+          onDownloadModel={speech.downloadModel}
+          onClose={() => setIsSettingsOpen(false)}
         />
 
         <LrcSearchModal
@@ -725,10 +969,16 @@ function App() {
           isPaused={audio.audioState.isPaused}
           title={cleanTrackTitle(localFileName) || (sourceMode === 'youtube' ? (youtube.currentTitle || 'YouTube 伴奏') : '尚未載入伴奏')}
           sourceMode={sourceMode}
+          hasBacking={sourceMode === 'youtube' ? Boolean(youtube.currentVideoId) : Boolean(audio.currentBackingBlob)}
           inputLevel={audio.inputLevel}
           onTogglePlay={handleToggleBackingPlay}
           onSeek={handleSeek}
-          onToggleRecord={handleToggleRecord}
+          isSingingMode={isSingingMode}
+          onExitSinging={exitSingingMode}
+          onStartRecording={handleStartRecording}
+          onPauseRecording={handlePauseRecording}
+          onResumeRecording={handleResumeRecording}
+          onFinishRecording={handleFinishRecording}
         />
       </main>
 
