@@ -13,6 +13,7 @@ declare global {
       openFile: (options?: { filters?: { name: string; extensions: string[] }[] }) => Promise<any>;
       saveFile: (options: { defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
       getTempDir: () => Promise<string>;
+      writeFile: (filePath: string, data: ArrayBuffer) => Promise<string>;
       writeTempFile: (filename: string, data: ArrayBuffer) => Promise<string>;
       readTempFile: (filename: string) => Promise<Buffer | null>;
       deleteTempFile: (filename: string) => Promise<boolean>;

@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 檔案系統操作
   getTempDir: () => ipcRenderer.invoke('fs:get-temp-dir'),
+  writeFile: (filePath: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('fs:write-file', filePath, data),
   writeTempFile: (filename: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('fs:write-temp', filename, data),
   readTempFile: (filename: string) =>
@@ -43,6 +45,7 @@ declare global {
       openFile: (options?: { filters?: { name: string; extensions: string[] }[] }) => Promise<any>;
       saveFile: (options: { defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
       getTempDir: () => Promise<string>;
+      writeFile: (filePath: string, data: ArrayBuffer) => Promise<string>;
       writeTempFile: (filename: string, data: ArrayBuffer) => Promise<string>;
       readTempFile: (filename: string) => Promise<Buffer | null>;
       deleteTempFile: (filename: string) => Promise<boolean>;

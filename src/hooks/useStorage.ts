@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Recording } from '../types';
+import type { Recording, SavedTake } from '../types';
 
 // ============================================================================
 // SingStudio - useStorage Hook
@@ -75,7 +75,7 @@ export function useStorage() {
             timestamp: val.timestamp,
             dateString: val.dateString,
             sizeFormatted: val.sizeFormatted,
-            takesCount: val.takesCount || 1,
+            takesCount: val.takesCount || val.takes?.length || 1,
             latencyOffset: val.latencyOffset || 0,
           } as Recording);
           cursor.continue();
@@ -101,15 +101,19 @@ export function useStorage() {
     note?: string;
     takesCount?: number;
     latencyOffset?: number;
+    takes?: SavedTake[];
   }): Promise<number | null> => {
     if (!db) {
       console.warn('資料庫未初始化');
       return null;
     }
 
+    // 完整多軌專案：保存所有 Take（含對位與長度），載入後可繼續編修
+    const takes = (data.takes || []).filter(t => t.blob instanceof Blob);
     const vocalSize = data.vocalBlob?.size || 0;
     const backingSize = data.backingBlob?.size || 0;
-    const totalBytes = vocalSize + backingSize;
+    const takesSize = takes.reduce((sum, t) => sum + (t.blob?.size || 0), 0);
+    const totalBytes = vocalSize + backingSize + takesSize;
 
     const item: any = {
       title: data.title || '未命名作品',
@@ -124,8 +128,9 @@ export function useStorage() {
       backingBlob: data.backingBlob,
       lyrics: data.lyrics || '',
       note: data.note || '',
-      takesCount: data.takesCount || 1,
+      takesCount: takes.length || data.takesCount || 1,
       latencyOffset: data.latencyOffset || 0,
+      takes,
     };
 
     return new Promise((resolve, reject) => {

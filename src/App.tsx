@@ -24,6 +24,8 @@ import { useStorage } from './hooks/useStorage';
 import { useSpeechTranscription, type SpeechChunk } from './hooks/useSpeechTranscription';
 import type { TimelineContextMenuInfo, LyricsContextMenuInfo, VocalTake } from './types';
 import { cleanTrackTitle } from './utils/format';
+import { renderLyricVideoBlob } from './utils/videoExport';
+import { saveBlobToDisk } from './utils/saveBlob';
 import './styles/App.css';
 
 type SourceMode = 'local' | 'youtube';
@@ -65,6 +67,10 @@ function speechChunksToLrc(chunks: SpeechChunk[] | undefined, text: string, offs
   return lines.length
     ? lines.map(line => `${createLrcTimestamp(line.time)}${line.text}`).join('\n')
     : `${createLrcTimestamp(offset)}${text.trim()}`;
+}
+
+function safeFilename(name: string): string {
+  return (name || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80);
 }
 
 function App() {
@@ -197,6 +203,8 @@ function App() {
 
   const [showSplashAd, setShowSplashAd] = useState(true);
   const [showPreRecAd, setShowPreRecAd] = useState(false);
+  const [videoExporting, setVideoExporting] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
 
   const startActualRecording = useCallback(async () => {
     setShowPreRecAd(false);
@@ -330,20 +338,25 @@ function App() {
   }, [sourceMode, youtube, audio, timeline.timelineState.currentTime]);
 
   const handleSaveToLibrary = useCallback(async (title: string) => {
-    const selectedTake = audio.vocalTakes.find(take => take.id === timeline.selectedTakeId)
-      || audio.vocalTakes[audio.vocalTakes.length - 1];
     await storage.saveRecording({
       title,
       sourceType: sourceMode,
       youtubeId: youtube.currentVideoId || undefined,
       duration: Math.max(audio.audioState.backingDuration, timeline.timelineState.duration),
-      vocalBlob: selectedTake?.blob,
+      // 完整可再編輯專案：保留所有 Take 的對位 (startTime) 與長度，載入後可繼續編修
+      takes: audio.vocalTakes.map(take => ({
+        id: take.id,
+        startTime: take.startTime,
+        duration: take.duration,
+        blob: take.blob,
+      })),
+      vocalBlob: audio.vocalTakes[audio.vocalTakes.length - 1]?.blob,
       backingBlob: sourceMode === 'local' ? audio.currentBackingBlob || undefined : undefined,
       lyrics: lyrics.lyricsState.rawLrcText,
       takesCount: audio.vocalTakes.length,
       latencyOffset: audio.audioState.latencyOffsetMs,
     });
-    alert('作品已安全寫入本地 IndexedDB 作品庫！');
+    alert('作品已安全寫入本地 IndexedDB 作品庫（含完整多軌 Take，可再載入續修）！');
   }, [storage, audio, youtube, timeline, lyrics, sourceMode]);
 
   const handleReviewPreviewToggle = useCallback(() => {
@@ -384,31 +397,61 @@ function App() {
   const handleExportWav = useCallback(async () => {
     try {
       const wavBlob = await audio.exportMixedWavBlob(sourceMode === 'local');
-      const defaultFilename = `SingStudio_${localFileName || 'Master'}_${Date.now()}.wav`;
-
-      if (window.electronAPI) {
-        const filePath = await window.electronAPI.saveFile({
-          defaultPath: defaultFilename,
-          filters: [{ name: 'WAV 音訊 (*.wav)', extensions: ['wav'] }]
-        });
-        if (filePath) {
-          const buf = await wavBlob.arrayBuffer();
-          await window.electronAPI.writeTempFile(filePath, buf);
-          alert(`混音母帶已成功匯出至：\n${filePath}`);
-          return;
-        }
-      }
-
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(wavBlob);
-      a.download = defaultFilename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      alert('混音母帶已成功生成並開始下載！');
+      const defaultFilename = `SingStudio_${safeFilename(cleanTrackTitle(localFileName) || 'Master')}_${Date.now()}.wav`;
+      const result = await saveBlobToDisk(wavBlob, defaultFilename, [
+        { name: 'WAV 音訊 (*.wav)', extensions: ['wav'] },
+      ]);
+      if (result === 'saved') alert(`混音母帶已成功匯出至：\n${defaultFilename}`);
+      else if (result === 'downloaded') alert('混音母帶已成功生成並開始下載！');
     } catch (err: any) {
       alert(`匯出失敗: ${err.message}`);
     }
   }, [audio, localFileName, sourceMode]);
+
+  const handleExportMp3 = useCallback(async () => {
+    try {
+      const mp3Blob = await audio.exportMixedMp3Blob(sourceMode === 'local', 192);
+      const defaultFilename = `SingStudio_${safeFilename(cleanTrackTitle(localFileName) || 'Master')}_${Date.now()}.mp3`;
+      const result = await saveBlobToDisk(mp3Blob, defaultFilename, [
+        { name: 'MP3 音訊 (*.mp3)', extensions: ['mp3'] },
+      ]);
+      if (result === 'saved') alert(`MP3 已成功匯出至：\n${defaultFilename}`);
+      else if (result === 'downloaded') alert('MP3 已成功生成並開始下載！');
+    } catch (err: any) {
+      alert(`MP3 匯出失敗: ${err.message}`);
+    }
+  }, [audio, localFileName, sourceMode]);
+
+  // MP4 歌詞影片：離線混音 → Canvas + MediaRecorder 即時渲染（畫面含歌詞字幕與頻譜）
+  const handleExportVideo = useCallback(async () => {
+    if (videoExporting) return;
+    setVideoExporting(true);
+    setVideoProgress(0);
+    try {
+      // 匯出期間停掉所有試聽音源，避免混入
+      audio.stopMixedPreview();
+      youtube.pause();
+
+      const mixedBuffer = await audio.renderMixedAudioBuffer(sourceMode === 'local');
+      const { blob, extension } = await renderLyricVideoBlob({
+        audioBuffer: mixedBuffer,
+        title: cleanTrackTitle(localFileName) || 'SingStudio 演唱作品',
+        lyrics: lyrics.lyricsState.lyrics,
+        onProgress: setVideoProgress,
+      });
+      const defaultFilename = `SingStudio_${safeFilename(cleanTrackTitle(localFileName) || 'Master')}_${Date.now()}.${extension}`;
+      const result = await saveBlobToDisk(blob, defaultFilename, [
+        { name: extension === 'mp4' ? 'MP4 影片 (*.mp4)' : 'WebM 影片 (*.webm)', extensions: [extension] },
+      ]);
+      if (result === 'saved') alert(`歌詞影片已成功匯出至：\n${defaultFilename}`);
+      else if (result === 'downloaded') alert('歌詞影片已成功生成並開始下載！');
+    } catch (err: any) {
+      alert(`影片匯出失敗: ${err.message}`);
+    } finally {
+      setVideoExporting(false);
+      setVideoProgress(0);
+    }
+  }, [audio, youtube, lyrics, localFileName, sourceMode, videoExporting]);
 
   const handleLoadFromLibrary = useCallback(async (id: number) => {
     const full = await storage.getById(id);
@@ -431,16 +474,31 @@ function App() {
     } else {
       lyrics.clearLyrics();
     }
-    if (full.vocalBlob) {
-      const take: VocalTake = {
-        id: Date.now(),
-        startTime: 0,
-        duration: full.duration,
-        blob: full.vocalBlob,
-        url: URL.createObjectURL(full.vocalBlob),
-      };
-      audio.replaceVocalTakes([take]);
-      timeline.setSelectedTakeId(take.id);
+    if (full.vocalBlob || full.takes?.length) {
+      // 優先還原完整多軌專案（所有 Take 含原始對位），舊資料退回單一 vocalBlob
+      if (full.takes?.length) {
+        const takes: VocalTake[] = full.takes
+          .filter(t => t.blob instanceof Blob)
+          .map(t => ({
+            id: t.id,
+            startTime: t.startTime,
+            duration: t.duration,
+            blob: t.blob,
+            url: URL.createObjectURL(t.blob!),
+          }));
+        audio.replaceVocalTakes(takes);
+        timeline.setSelectedTakeId(takes[takes.length - 1]?.id ?? null);
+      } else {
+        const take: VocalTake = {
+          id: Date.now(),
+          startTime: 0,
+          duration: full.duration,
+          blob: full.vocalBlob,
+          url: URL.createObjectURL(full.vocalBlob!),
+        };
+        audio.replaceVocalTakes([take]);
+        timeline.setSelectedTakeId(take.id);
+      }
     } else {
       audio.replaceVocalTakes([]);
     }
@@ -997,6 +1055,10 @@ function App() {
           onLatencyOffsetChange={audio.updateLatencyOffset}
           onSaveToLibrary={handleSaveToLibrary}
           onExportWav={handleExportWav}
+          onExportMp3={handleExportMp3}
+          onExportVideo={handleExportVideo}
+          videoExporting={videoExporting}
+          videoProgress={videoProgress}
         />
 
         <SettingsModal

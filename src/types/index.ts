@@ -12,6 +12,14 @@ export interface VocalTake {
   rmsHistory?: number[];
 }
 
+// 可再編輯專案的 Take 快照（保存至作品庫 / 載入續修用）
+export interface SavedTake {
+  id: number;
+  startTime: number;
+  duration: number;
+  blob?: Blob;
+}
+
 export interface LyricsLine {
   time: number;
   text: string;
@@ -45,6 +53,7 @@ export interface Recording {
   note?: string;
   takesCount?: number;
   latencyOffset?: number;
+  takes?: SavedTake[];
 }
 
 export interface AudioState {

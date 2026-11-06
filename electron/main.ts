@@ -236,6 +236,20 @@ ipcMain.handle('fs:get-temp-dir', () => {
   return tempDir;
 });
 
+// 寫入使用者指定的輸出檔案（匯出用；filePath 必須是絕對路徑）
+ipcMain.handle('fs:write-file', async (_event, filePath: string, data: ArrayBuffer) => {
+  if (!filePath || typeof filePath !== 'string') {
+    throw new Error('無效的輸出路徑');
+  }
+  const resolved = path.resolve(filePath);
+  if (!path.isAbsolute(resolved)) {
+    throw new Error('必須提供絕對路徑');
+  }
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, Buffer.from(data));
+  return resolved;
+});
+
 // 寫入暫存檔案
 ipcMain.handle('fs:write-temp', async (_event, filename: string, data: ArrayBuffer) => {
   const tempDir = path.join(app.getPath('userData'), 'temp_recordings');

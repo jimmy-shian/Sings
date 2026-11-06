@@ -31,6 +31,11 @@ interface ReviewModalProps {
   onLatencyOffsetChange: (offsetMs: number) => void;
   onSaveToLibrary: (title: string) => Promise<void>;
   onExportWav: () => Promise<void>;
+  onExportMp3: () => Promise<void>;
+  onExportVideo: () => Promise<void>;
+  videoExporting?: boolean;
+  /** MP4 即時渲染進度 0 ~ 1 */
+  videoProgress?: number;
 }
 
 export const ReviewModal: React.FC<ReviewModalProps> = ({
@@ -61,6 +66,10 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   onLatencyOffsetChange,
   onSaveToLibrary,
   onExportWav,
+  onExportMp3,
+  onExportVideo,
+  videoExporting = false,
+  videoProgress = 0,
 }) => {
   const reviewTimeline = useTimeline(duration);
   const [saveTitle, setSaveTitle] = useState(defaultTitle || '我的演唱作品');
@@ -84,6 +93,22 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
       setIsExporting(false);
     }
   };
+
+  const handleExportMp3Click = async () => {
+    setIsExporting(true);
+    try {
+      await onExportMp3();
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportVideoClick = async () => {
+    if (videoExporting) return;
+    await onExportVideo();
+  };
+
+  const anyExporting = isExporting || videoExporting;
 
   const handleSaveConfirm = async () => {
     if (!saveTitle.trim()) return;
@@ -231,7 +256,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
           {sourceMode === 'youtube' && (
             <p className="review-source-note" role="note">
-              YouTube 伴奏會在播放器中同步試聽；匯出的 WAV 只包含錄製人聲。
+              YouTube 伴奏會在播放器中同步試聽；匯出的 WAV / MP3 / MP4 只包含錄製人聲。
             </p>
           )}
 
@@ -400,14 +425,26 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
+            flexWrap: 'wrap',
             gap: '12px',
             backgroundColor: 'var(--surface-subtle)',
           }}
         >
+          {videoExporting && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginRight: 'auto' }}>
+              <span style={{ fontSize: '13.5px', color: 'var(--text-secondary)' }}>
+                影片即時渲染中 {Math.round(videoProgress * 100)}%（請保持視窗開啟）
+              </span>
+              <div style={{ width: '160px', height: '6px', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.round(videoProgress * 100)}%`, height: '100%', backgroundColor: 'var(--accent)', transition: 'width 0.2s linear' }} />
+              </div>
+            </div>
+          )}
           <button
             className="btn btn-outline"
             type="button"
             onClick={() => setShowSaveDialog(true)}
+            disabled={anyExporting}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -418,10 +455,28 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             <span>保存至本機作品庫</span>
           </button>
           <button
+            className="btn btn-outline"
+            type="button"
+            onClick={handleExportMp3Click}
+            disabled={anyExporting}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            {isExporting ? (
+              <span>MP3 編碼中...</span>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                </svg>
+                <span>匯出 MP3</span>
+              </>
+            )}
+          </button>
+          <button
             className="btn btn-success"
             type="button"
             onClick={handleExport}
-            disabled={isExporting}
+            disabled={anyExporting}
             style={{ minWidth: '170px', display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}
           >
             {isExporting ? (
@@ -434,6 +489,25 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
                 <span>匯出 16-bit WAV</span>
+              </>
+            )}
+          </button>
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={handleExportVideoClick}
+            disabled={anyExporting}
+            style={{ minWidth: '170px', display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}
+          >
+            {videoExporting ? (
+              <span>影片渲染中 {Math.round(videoProgress * 100)}%...</span>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7" />
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                </svg>
+                <span>匯出 MP4 影片</span>
               </>
             )}
           </button>
