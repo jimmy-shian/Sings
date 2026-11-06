@@ -68,6 +68,10 @@ export interface AudioState {
   monitorVolume: number;
   micSensitivity: number;
   isNoiseFilterEnabled: boolean;
+  /** 伴奏播放速度 0.5 ~ 2.0（錄音時自動回復 1.0） */
+  playbackRate: number;
+  /** 升降 KEY 半音數 -6 ~ +6（僅本地音檔支援；錄音時自動回復 0） */
+  pitchSemitones: number;
 }
 
 export interface TimelineState {

@@ -280,6 +280,18 @@ export function useYouTube() {
     player?.setVolume?.(vol);
   }, [player]);
 
+  // YouTube 原生變速：吸附至播放器支援的速率檔位
+  const setPlaybackRate = useCallback((rate: number) => {
+    const available = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    const snapped = available.reduce((best, v) =>
+      Math.abs(v - rate) < Math.abs(best - rate) ? v : best, 1);
+    try {
+      player?.setPlaybackRate?.(snapped);
+    } catch (e) {
+      console.warn('YouTube 設定播放速度失敗:', e);
+    }
+  }, [player]);
+
   useEffect(() => {
     initApi();
     return () => {
@@ -307,5 +319,6 @@ export function useYouTube() {
     pause,
     seekTo,
     setVolume,
+    setPlaybackRate,
   };
 }

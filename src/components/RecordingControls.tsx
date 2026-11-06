@@ -55,7 +55,8 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         </button>
       )}
 
-      {hasRecording && !isRecording && (
+      {/* 錄音中 / 暫停中都必须能「完成」，否則桌面版會卡在暫停狀態無出口 */}
+      {(isRecording || isPaused || (hasRecording && !isRecording)) && (
         <>
           <button className="btn btn-success" type="button" onClick={onFinishRecording}>
             <svg className="icon" viewBox="0 0 24 24">
@@ -63,7 +64,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
             </svg>
             完成演唱 · 進入後製混音
           </button>
-          <button className="btn" type="button" onClick={onResetRecording}>
+          <button className="btn" type="button" onClick={onResetRecording} disabled={isRecording}>
             <svg className="icon" viewBox="0 0 24 24">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
               <path d="M3 3v5h5"></path>

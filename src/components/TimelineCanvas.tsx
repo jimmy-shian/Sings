@@ -11,6 +11,8 @@ interface TimelineCanvasProps {
   liveVocalWave?: Float32Array | null;
   selectedTakeId?: number | null;
   isRecording?: boolean;
+  /** 錄音 / 暫停期間鎖定定位：take 對位以開始錄製當下為準，跳轉會造成人聲錯位 */
+  seekLocked?: boolean;
   onSeek: (time: number) => void;
   onZoom: (factor: number, centerTime?: number) => void;
   onPan: (deltaSeconds: number) => void;
@@ -28,6 +30,7 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
   liveVocalWave,
   selectedTakeId,
   isRecording,
+  seekLocked = false,
   onSeek,
   onZoom,
   onPan,
@@ -284,6 +287,7 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
       panStartRef.current = { x: e.clientX, viewStartTime };
       canvas.style.cursor = 'grab';
     } else if (e.button === 0) {
+      if (seekLocked) return;
       isDraggingRef.current = true;
       canvas.style.cursor = 'crosshair';
 
@@ -350,6 +354,8 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas || !onContextMenu) return;
+    // 錄音 / 暫停期間不提供定位選單，避免 Punch-in 覆蓋進行中的錄音或跳轉伴奏
+    if (seekLocked) return;
 
     const rect = canvas.getBoundingClientRect();
     const clickTime = xToTime(e.clientX - rect.left, rect.width);
@@ -366,6 +372,7 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas || e.touches.length === 0) return;
+    if (seekLocked) return;
     const touch = e.touches[0];
     isDraggingRef.current = true;
     const rect = canvas.getBoundingClientRect();
@@ -383,6 +390,7 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas || e.touches.length === 0 || !isDraggingRef.current) return;
+    if (seekLocked) return;
     const touch = e.touches[0];
     const rect = canvas.getBoundingClientRect();
     const clickTime = xToTime(touch.clientX - rect.left, rect.width);
@@ -400,7 +408,7 @@ export const TimelineCanvas: React.FC<TimelineCanvasProps> = ({
     <div className="visualizer-card" style={{ position: 'relative', width: '100%', height: '100%', minHeight: '180px' }}>
       <canvas
         ref={canvasRef}
-        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }}
+        style={{ display: 'block', width: '100%', height: '100%', cursor: seekLocked ? 'not-allowed' : 'crosshair', touchAction: 'none' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

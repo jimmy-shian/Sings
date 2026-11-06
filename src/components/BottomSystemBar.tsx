@@ -12,6 +12,11 @@ interface BottomSystemBarProps {
   hasBacking: boolean;
   inputLevel: number;
   isSingingMode: boolean;
+  /** 播放速度 0.5~2（YouTube 僅變速，無法升降 KEY） */
+  playbackRate: number;
+  pitchSemitones: number;
+  /** true = YouTube 來源，KEY 控制鎖定 */
+  pitchLocked: boolean;
   onExitSinging: () => void;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
@@ -19,6 +24,8 @@ interface BottomSystemBarProps {
   onPauseRecording: () => void;
   onResumeRecording: () => void;
   onFinishRecording: () => void;
+  onCycleRate: () => void;
+  onPitchStep: (delta: number) => void;
 }
 
 export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
@@ -32,6 +39,9 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
   hasBacking,
   inputLevel,
   isSingingMode,
+  playbackRate,
+  pitchSemitones,
+  pitchLocked,
   onExitSinging,
   onTogglePlay,
   onSeek,
@@ -39,6 +49,8 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
   onPauseRecording,
   onResumeRecording,
   onFinishRecording,
+  onCycleRate,
+  onPitchStep,
 }) => {
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -106,6 +118,40 @@ export const BottomSystemBar: React.FC<BottomSystemBarProps> = ({
           <span className="bottom-bar-status-badge" style={{ color: statusColor }}>{statusLabel}</span>
           {(isRecording || isPaused) && <span className="bottom-bar-level-badge">麥克風 {inputLevel.toFixed(0)} dB</span>}
         </div>
+
+        {/* 變速 / 升降 KEY 精簡列（錄音與暫停期間隱藏，錄音自動回復原速原調） */}
+        {hasBacking && !isRecording && !isPaused && (
+          <div className="bottom-rate-key-row">
+            <button className="bottom-rk-pill" type="button" onClick={onCycleRate} title="循環切換播放速度">
+              速度 {playbackRate}x
+            </button>
+            <button
+              className="bottom-rk-pill"
+              type="button"
+              onClick={() => onPitchStep(-1)}
+              disabled={pitchLocked || pitchSemitones <= -6}
+              title={pitchLocked ? 'YouTube 來源無法升降 KEY' : '降半音'}
+            >
+              KEY −
+            </button>
+            <span className={`bottom-rk-value${pitchLocked ? ' locked' : ''}`}>
+              {pitchLocked
+                ? 'YT'
+                : pitchSemitones === 0
+                  ? '原調'
+                  : `${pitchSemitones > 0 ? '+' : ''}${pitchSemitones}`}
+            </span>
+            <button
+              className="bottom-rk-pill"
+              type="button"
+              onClick={() => onPitchStep(1)}
+              disabled={pitchLocked || pitchSemitones >= 6}
+              title={pitchLocked ? 'YouTube 來源無法升降 KEY' : '升半音'}
+            >
+              KEY ＋
+            </button>
+          </div>
+        )}
 
         <div className="bottom-bar-right">
           <button className="bottom-bar-btn mobile-exit-btn" type="button" onClick={onExitSinging} disabled={isRecording || isPaused}>返回準備</button>

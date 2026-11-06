@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { VocalTake, AudioState } from '../types';
+import { createPitchShifterNode } from '../utils/pitchWorklet';
 
 export function useAudioEngine() {
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -38,6 +39,8 @@ export function useAudioEngine() {
     monitorVolume: 1.0,
     micSensitivity: 0.85,
     isNoiseFilterEnabled: true,
+    playbackRate: 1,
+    pitchSemitones: 0,
   });
 
   const [vocalTakes, setVocalTakes] = useState<VocalTake[]>([]);
@@ -53,6 +56,8 @@ export function useAudioEngine() {
   const recordingSegmentStartedAtRef = useRef(0);
   const currentTakeStartTimeRef = useRef(0);
   const reRecordLimitTimerRef = useRef<any>(null);
+  const reRecordRemainingMsRef = useRef<number | null>(null);
+  const reRecordTimerStartRef = useRef(0);
   const animationFrameRef = useRef<number>(0);
   const levelUpdateRef = useRef<(() => void) | null>(null);
   const timeDataRef = useRef<Float32Array>(new Float32Array(1024));
@@ -62,6 +67,13 @@ export function useAudioEngine() {
   const previewRafRef = useRef<number | null>(null);
   const previewStartStampRef = useRef<number>(0);
   const previewStartOffsetRef = useRef<number>(0);
+
+  // 變速 / 升降 KEY：伴奏元素經 Web Audio 圖路由，pitch=0 時直通（bypass）
+  const elementSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const pitchNodeRef = useRef<AudioWorkletNode | null>(null);
+  const backingMasterGainRef = useRef<GainNode | null>(null);
+  const playbackRateRef = useRef(1);
+  const pitchSemitonesRef = useRef(0);
 
   useEffect(() => {
     vocalTakesRef.current = vocalTakes;
@@ -195,6 +207,10 @@ export function useAudioEngine() {
     backingObjectUrlRef.current = url;
     element.src = url;
     element.load();
+    // 變速：保持音高（preservesPitch），升降 KEY 由 Web Audio 圖處理
+    element.preservesPitch = true;
+    (element as any).webkitPreservesPitch = true;
+    element.playbackRate = playbackRateRef.current;
 
     const peaks = await extractWaveformPeaks(file, 800);
     setWaveformPeaks(peaks);
@@ -250,6 +266,95 @@ export function useAudioEngine() {
       return takes;
     });
   }, []);
+
+  // ---- 變速 / 升降 KEY：伴奏元素 → (PitchWorklet) → MasterGain → 輸出 ----
+
+  // 建立伴奏元素的 Web Audio 圖（每個元素只能建一次 MediaElementSource，之後固定走圖）
+  const ensurePitchGraph = useCallback(async (): Promise<boolean> => {
+    const ctx = await ensureAudioContext();
+    const element = backingAudioRef.current;
+    if (!ctx || !element) return false;
+    if (!elementSourceRef.current) {
+      try {
+        elementSourceRef.current = ctx.createMediaElementSource(element);
+        backingMasterGainRef.current = ctx.createGain();
+        elementSourceRef.current.connect(backingMasterGainRef.current);
+        backingMasterGainRef.current.connect(ctx.destination);
+      } catch (e) {
+        console.warn('建立伴奏音訊圖失敗:', e);
+        return false;
+      }
+    }
+    if (!pitchNodeRef.current) {
+      try {
+        pitchNodeRef.current = await createPitchShifterNode(ctx);
+        const param = pitchNodeRef.current.parameters.get('semitones');
+        param?.setValueAtTime(pitchSemitonesRef.current, ctx.currentTime);
+      } catch (e) {
+        console.warn('載入升降 KEY 處理器失敗:', e);
+        pitchNodeRef.current = null;
+        return false;
+      }
+    }
+    return true;
+  }, [ensureAudioContext]);
+
+  // 依 semitones 接線：0 = 直通 bypass，≠0 = 經 pitch worklet
+  const routePitch = useCallback((semi: number) => {
+    const src = elementSourceRef.current;
+    const master = backingMasterGainRef.current;
+    if (!src || !master) return;
+    try { src.disconnect(); } catch { /* noop */ }
+    if (semi !== 0 && pitchNodeRef.current) {
+      try { pitchNodeRef.current.disconnect(); } catch { /* noop */ }
+      src.connect(pitchNodeRef.current);
+      pitchNodeRef.current.connect(master);
+    } else {
+      src.connect(master);
+    }
+  }, []);
+
+  const updatePlaybackRate = useCallback((rate: number) => {
+    if (audioState.isRecording || audioState.isPaused) return;
+    const clamped = Math.min(2, Math.max(0.5, rate));
+    setAudioState(prev => ({ ...prev, playbackRate: clamped }));
+    playbackRateRef.current = clamped;
+    if (backingAudioRef.current) {
+      backingAudioRef.current.playbackRate = clamped;
+    }
+  }, [audioState.isRecording, audioState.isPaused]);
+
+  const updatePitchSemitones = useCallback(async (semi: number) => {
+    if (audioState.isRecording || audioState.isPaused) return;
+    const clamped = Math.max(-6, Math.min(6, Math.round(semi)));
+    setAudioState(prev => ({ ...prev, pitchSemitones: clamped }));
+    pitchSemitonesRef.current = clamped;
+    // YouTube 音訊無法路由進 Web Audio（跨來源限制），僅記錄狀態供 UI 顯示
+    if (audioState.sourceMode === 'youtube') return;
+    if (clamped === 0 && !pitchNodeRef.current) return;
+    const ok = await ensurePitchGraph();
+    if (!ok || !audioCtxRef.current) return;
+    const param = pitchNodeRef.current?.parameters.get('semitones');
+    if (param) {
+      param.setTargetAtTime(clamped, audioCtxRef.current.currentTime, 0.02);
+    }
+    routePitch(clamped);
+  }, [audioState.isRecording, audioState.isPaused, audioState.sourceMode, ensurePitchGraph, routePitch]);
+
+  // 開始錄音前回復原速原調（速度≠1 會使 take 對位錯置）
+  const resetPlaybackPitch = useCallback(() => {
+    setAudioState(prev => ({ ...prev, playbackRate: 1, pitchSemitones: 0 }));
+    playbackRateRef.current = 1;
+    pitchSemitonesRef.current = 0;
+    if (backingAudioRef.current) {
+      backingAudioRef.current.playbackRate = 1;
+    }
+    if (pitchNodeRef.current && audioCtxRef.current) {
+      const param = pitchNodeRef.current.parameters.get('semitones');
+      param?.setValueAtTime(0, audioCtxRef.current.currentTime);
+    }
+    routePitch(0);
+  }, [routePitch]);
 
   // 麥克風與監聽節點初始化
   const initMicrophone = useCallback(async () => {
@@ -400,6 +505,18 @@ export function useAudioEngine() {
   }, [initMicrophone, audioState.liveBackingVolume]);
 
   const pauseRecording = useCallback(() => {
+    // 重錄自動結束 timer：暫停時凍結剩餘時間
+    if (reRecordRemainingMsRef.current !== null) {
+      const remaining = reRecordRemainingMsRef.current - (performance.now() - reRecordTimerStartRef.current);
+      clearTimeout(reRecordLimitTimerRef.current);
+      reRecordLimitTimerRef.current = null;
+      if (remaining <= 0) {
+        reRecordRemainingMsRef.current = null;
+        finishRecording();
+        return;
+      }
+      reRecordRemainingMsRef.current = remaining;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       if (recordingSegmentStartedAtRef.current) {
         recordingActiveDurationRef.current += (performance.now() - recordingSegmentStartedAtRef.current) / 1000;
@@ -421,9 +538,19 @@ export function useAudioEngine() {
       if (recordingBackingEnabledRef.current && backingAudioRef.current) {
         backingAudioRef.current.play().catch(e => console.warn(e));
       }
+      // 恢復重錄自動結束 timer（以凍結的剩餘時間）
+      if (reRecordRemainingMsRef.current !== null) {
+        const remaining = Math.max(reRecordRemainingMsRef.current, 100);
+        reRecordTimerStartRef.current = performance.now();
+        reRecordLimitTimerRef.current = setTimeout(() => {
+          reRecordRemainingMsRef.current = null;
+          finishRecording();
+        }, remaining);
+      }
       setAudioState(prev => ({ ...prev, isRecording: true, isPaused: false }));
       levelUpdateRef.current?.();
     }
+    // finishRecording 為穩定 useCallback（deps []），且宣告於本函式之後，故不入依賴
   }, []);
 
   const finishRecording = useCallback(() => new Promise<void>((resolve) => {
@@ -432,6 +559,7 @@ export function useAudioEngine() {
       clearTimeout(reRecordLimitTimerRef.current);
       reRecordLimitTimerRef.current = null;
     }
+    reRecordRemainingMsRef.current = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       if (recordingSegmentStartedAtRef.current) {
         recordingActiveDurationRef.current += (performance.now() - recordingSegmentStartedAtRef.current) / 1000;
@@ -456,6 +584,7 @@ export function useAudioEngine() {
       clearTimeout(reRecordLimitTimerRef.current);
       reRecordLimitTimerRef.current = null;
     }
+    reRecordRemainingMsRef.current = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       discardActiveTakeRef.current = true;
       recordingSegmentStartedAtRef.current = 0;
@@ -475,14 +604,24 @@ export function useAudioEngine() {
     setLiveVocalWave(null);
   }, []);
 
-  const reRecordTake = useCallback(async (takeId: number) => {
+  const reRecordTake = useCallback(async (
+    takeId: number,
+    options?: { playExternalBacking?: (startAt: number) => void },
+  ) => {
     const take = vocalTakes.find(t => t.id === takeId);
     if (!take) return;
 
     setVocalTakes(prev => prev.filter(t => t.id !== takeId));
-    await startRecording(take.startTime);
+    // 有外部伴奏（YouTube）時交由呼叫端驅動播放；引擎只處理錄音與內部伴奏
+    const started = await startRecording(take.startTime, !options?.playExternalBacking);
+    if (!started) return;
+    options?.playExternalBacking?.(take.startTime);
 
+    // 自動結束：take 原長度，暫停時凍結（見 pause/resumeRecording）
+    reRecordRemainingMsRef.current = take.duration * 1000;
+    reRecordTimerStartRef.current = performance.now();
     reRecordLimitTimerRef.current = setTimeout(() => {
+      reRecordRemainingMsRef.current = null;
       finishRecording();
     }, take.duration * 1000);
   }, [vocalTakes, startRecording, finishRecording]);
@@ -500,8 +639,10 @@ export function useAudioEngine() {
     a.play();
   }, []);
 
-  const playBackingOnly = useCallback((startAtSec = 0) => {
+  const playBackingOnly = useCallback(async (startAtSec = 0) => {
     if (backingAudioRef.current && backingAudioRef.current.src) {
+      // 伴奏元素一旦接上 Web Audio 圖，播放前必須 resume，否則靜音
+      await ensureAudioContext();
       backingAudioRef.current.currentTime = startAtSec;
       backingAudioRef.current.volume = audioState.liveBackingVolume;
       backingAudioRef.current.play().catch(e => {
@@ -509,7 +650,7 @@ export function useAudioEngine() {
         console.warn('伴奏播放失敗:', e);
       });
     }
-  }, [audioState.liveBackingVolume]);
+  }, [audioState.liveBackingVolume, ensureAudioContext]);
 
   const pauseBackingOnly = useCallback(() => {
     if (backingAudioRef.current) {
@@ -624,7 +765,8 @@ export function useAudioEngine() {
     }
   }, [audioState.isPlayingMix, stopMixedPreview, playMixedPreview, mixCurrentTime]);
 
-  const exportMixedWavBlob = useCallback(async (includeBackingTrack = true): Promise<Blob> => {
+  // 離線渲染最終混音（伴奏 + 人聲 + 殘響 + 延遲補償）
+  const renderMixedAudioBuffer = useCallback(async (includeBackingTrack = true): Promise<AudioBuffer> => {
     const ctx = await ensureAudioContext();
     const sampleRate = 44100;
     const totalDuration = Math.max(
@@ -693,8 +835,53 @@ export function useAudioEngine() {
     }
 
     const rendered = await offlineCtx.startRendering();
+    return rendered;
+  }, [ensureAudioContext, audioState, vocalTakes, currentBackingBlob]);
+
+  const exportMixedWavBlob = useCallback(async (includeBackingTrack = true): Promise<Blob> => {
+    const rendered = await renderMixedAudioBuffer(includeBackingTrack);
     return audioBufferToWavBlob(rendered);
-  }, [ensureAudioContext, audioState, vocalTakes, currentBackingBlob, audioBufferToWavBlob]);
+  }, [renderMixedAudioBuffer, audioBufferToWavBlob]);
+
+  // 16-bit PCM → MP3（lamejs 純 JS 編碼，離線、免 ffmpeg）
+  const audioBufferToMp3Blob = useCallback(async (buffer: AudioBuffer, kbps = 192): Promise<Blob> => {
+    const { Mp3Encoder } = await import('@breezystack/lamejs');
+    const channels = Math.min(2, buffer.numberOfChannels);
+    const encoder = new Mp3Encoder(channels, buffer.sampleRate, kbps);
+
+    const toInt16 = (float32: Float32Array): Int16Array => {
+      const out = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      return out;
+    };
+
+    const left = buffer.getChannelData(0);
+    const right = channels > 1 ? buffer.getChannelData(1) : null;
+    const blockSize = 1152 * 20;
+    const chunks: Uint8Array[] = [];
+
+    for (let offset = 0; offset < buffer.length; offset += blockSize) {
+      const leftChunk = toInt16(left.subarray(offset, Math.min(offset + blockSize, buffer.length)));
+      const encoded = channels > 1
+        ? encoder.encodeBuffer(leftChunk, toInt16(right!.subarray(offset, Math.min(offset + blockSize, buffer.length))))
+        : encoder.encodeBuffer(leftChunk);
+      if (encoded.length > 0) chunks.push(new Uint8Array(encoded));
+      // 讓出主執行緒，保持 UI 可回應
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const tail = encoder.flush();
+    if (tail.length > 0) chunks.push(new Uint8Array(tail));
+    return new Blob(chunks as BlobPart[], { type: 'audio/mpeg' });
+  }, []);
+
+  const exportMixedMp3Blob = useCallback(async (includeBackingTrack = true, kbps = 192): Promise<Blob> => {
+    const rendered = await renderMixedAudioBuffer(includeBackingTrack);
+    return audioBufferToMp3Blob(rendered, kbps);
+  }, [renderMixedAudioBuffer, audioBufferToMp3Blob]);
 
   const updateBackingVolume = useCallback((volume: number) => {
     setAudioState(prev => ({ ...prev, liveBackingVolume: volume, backingVolume: volume }));
@@ -801,6 +988,8 @@ export function useAudioEngine() {
     seekMixedPreview,
     toggleMixedPreview,
     exportMixedWavBlob,
+    exportMixedMp3Blob,
+    renderMixedAudioBuffer,
     updateBackingVolume,
     updateVocalVolume,
     updateLatencyOffset,
@@ -812,5 +1001,8 @@ export function useAudioEngine() {
     toggleMonitor,
     toggleVocalCancellation,
     toggleNoiseFilter,
+    updatePlaybackRate,
+    updatePitchSemitones,
+    resetPlaybackPitch,
   };
 }

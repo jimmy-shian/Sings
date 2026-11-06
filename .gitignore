@@ -37,6 +37,7 @@ scratch/
 /AD_UNITS_CONFIG.xlsx
 /ad_config.json
 /admob-config.json
+/ad-reset-config.json
 
 # Native build output and local environment
 /android/.gradle/

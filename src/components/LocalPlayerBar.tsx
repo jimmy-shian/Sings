@@ -7,6 +7,8 @@ interface LocalPlayerBarProps {
   currentTime: number;
   duration: number;
   hasTrack: boolean;
+  /** 錄音 / 暫停期間鎖定播放與定位 */
+  seekLocked?: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onChangeFile: () => void;
@@ -18,6 +20,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
   currentTime,
   duration,
   hasTrack,
+  seekLocked = false,
   onTogglePlay,
   onSeek,
   onChangeFile,
@@ -48,7 +51,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
           className={`btn btn-sm local-player-play-btn ${isPlaying ? 'btn-warning' : 'btn-primary'}`}
           type="button"
           onClick={onTogglePlay}
-          disabled={!hasTrack}
+          disabled={!hasTrack || seekLocked}
         >
           {isPlaying ? (
             <>
@@ -75,7 +78,7 @@ export const LocalPlayerBar: React.FC<LocalPlayerBarProps> = ({
           step="0.1"
           value={currentTime}
           onChange={(e) => onSeek(Number(e.target.value))}
-          disabled={!hasTrack}
+          disabled={!hasTrack || seekLocked}
         />
 
         <span className="local-track-time">

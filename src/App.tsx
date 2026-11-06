@@ -89,6 +89,8 @@ function App() {
   const vocalTakeIdsRef = useRef('');
   const isSingingMode = stage === 'sing';
   const showReviewModal = stage === 'review' && !isLibraryOpen;
+  // 錄音 / 暫停期間鎖定一切定位操作：take 對位固定於開始錄製當下，跳轉會導致人聲錯位
+  const seekLocked = audio.audioState.isRecording || audio.audioState.isPaused;
 
   useEffect(() => {
     const ids = audio.vocalTakes.map(take => take.id).join(',');
@@ -129,6 +131,7 @@ function App() {
   }, [sourceMode, youtube.duration, timelineSetDuration]);
 
   const handleSeek = useCallback((time: number) => {
+    if (audio.audioState.isRecording || audio.audioState.isPaused) return;
     timelineSeek(time);
     lyricsUpdateIndex(time);
 
@@ -197,6 +200,9 @@ function App() {
 
   const startActualRecording = useCallback(async () => {
     setShowPreRecAd(false);
+    // 錄音前回復原速原調（速度≠1 會使人聲 take 對位錯置）
+    audio.resetPlaybackPitch();
+    if (sourceMode === 'youtube') youtube.setPlaybackRate(1);
     const startAt = timeline.timelineState.currentTime;
     const started = await audio.startRecording(startAt, sourceMode === 'local');
     if (!started) {
@@ -209,6 +215,25 @@ function App() {
     }
     setStage('sing');
   }, [audio, timeline.timelineState.currentTime, sourceMode, youtube]);
+
+  // ---- 播放變速 / 升降 KEY ----
+  const RATE_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+  const handlePlaybackRateChange = useCallback((rate: number) => {
+    audio.updatePlaybackRate(rate);
+    if (sourceMode === 'youtube') youtube.setPlaybackRate(rate);
+  }, [audio, sourceMode, youtube]);
+
+  const handleCycleRate = useCallback(() => {
+    const current = audio.audioState.playbackRate;
+    const idx = RATE_PRESETS.findIndex(p => Math.abs(p - current) < 0.01);
+    const next = idx === -1 ? 1 : RATE_PRESETS[(idx + 1) % RATE_PRESETS.length];
+    handlePlaybackRateChange(next);
+  }, [audio.audioState.playbackRate, handlePlaybackRateChange]);
+
+  const handlePitchStep = useCallback((delta: number) => {
+    audio.updatePitchSemitones(audio.audioState.pitchSemitones + delta);
+  }, [audio]);
 
   const handleStartRecording = useCallback(async () => {
     setShowPreRecAd(true);
@@ -242,6 +267,20 @@ function App() {
   const handleResumeRecording = useCallback(() => {
     audio.resumeRecording();
     if (sourceMode === 'youtube') youtube.play();
+  }, [audio, sourceMode, youtube]);
+
+  // 重錄此段：YouTube 來源改驅動線上播放器 seek + play（原實作只會去播空伴奏元素）
+  const handleReRecordTake = useCallback(async (takeId: number) => {
+    if (sourceMode === 'youtube') {
+      await audio.reRecordTake(takeId, {
+        playExternalBacking: (startAt) => {
+          youtube.seekTo(startAt);
+          youtube.play();
+        },
+      });
+    } else {
+      await audio.reRecordTake(takeId);
+    }
   }, [audio, sourceMode, youtube]);
 
   const handleStageChange = useCallback((next: AppStage) => {
@@ -518,6 +557,7 @@ function App() {
                 isPlaying={audio.audioState.isBackingSoloPlaying}
                 currentTime={timeline.timelineState.currentTime}
                 duration={timeline.timelineState.duration}
+                seekLocked={seekLocked}
                 onTogglePlay={() => {
                   if (audio.audioState.isBackingSoloPlaying) audio.pauseBackingOnly();
                   else audio.playBackingOnly(timeline.timelineState.currentTime);
@@ -634,6 +674,7 @@ function App() {
                     liveVocalWave={audio.liveVocalWave}
                     selectedTakeId={timeline.selectedTakeId}
                     isRecording={audio.audioState.isRecording}
+                    seekLocked={seekLocked}
                     onSeek={handleSeek}
                     onZoom={timeline.zoom}
                     onPan={timeline.pan}
@@ -650,6 +691,7 @@ function App() {
                     className="btn btn-sm btn-icon"
                     type="button"
                     onClick={() => handleSeek(0)}
+                    disabled={seekLocked}
                     title="重設回起點 (00:00)"
                   >
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -660,6 +702,7 @@ function App() {
                     className="btn btn-sm btn-icon"
                     type="button"
                     onClick={() => handleSeek(Math.max(0, timeline.timelineState.currentTime - 5))}
+                    disabled={seekLocked}
                     title="快退 5 秒"
                   >
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -672,6 +715,7 @@ function App() {
                     className={`btn btn-sm media-play-btn ${isBackingPlaying ? 'playing' : ''}`}
                     type="button"
                     onClick={handleToggleBackingPlay}
+                    disabled={seekLocked}
                     title={isBackingPlaying ? '暫停伴奏 (Space)' : '播放伴奏 (Space)'}
                   >
                     {isBackingPlaying ? (
@@ -694,6 +738,7 @@ function App() {
                     className="btn btn-sm btn-icon"
                     type="button"
                     onClick={() => handleSeek(Math.min(timeline.timelineState.duration, timeline.timelineState.currentTime + 5))}
+                    disabled={seekLocked}
                     title="快進 5 秒"
                   >
                     <span>5s</span>
@@ -702,6 +747,54 @@ function App() {
                       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                     </svg>
                   </button>
+                </div>
+
+                <div className="media-rate-key-strip">
+                  <label
+                    className="mini-ctl"
+                    title="播放速度（練習用；開始錄音時自動回復原速）"
+                  >
+                    <span>速度</span>
+                    <select
+                      className="mini-select"
+                      value={audio.audioState.playbackRate}
+                      disabled={seekLocked}
+                      onChange={(e) => handlePlaybackRateChange(Number(e.target.value))}
+                    >
+                      {RATE_PRESETS.map(r => (
+                        <option key={r} value={r}>{r}x</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div
+                    className="mini-ctl"
+                    title={sourceMode === 'youtube'
+                      ? 'YouTube 來源技術上無法升降 KEY（僅支援變速）'
+                      : '升降 KEY（半音）；開始錄音時自動回復原調'}
+                  >
+                    <span>KEY</span>
+                    <button
+                      className="btn btn-sm btn-icon key-btn"
+                      type="button"
+                      disabled={seekLocked || sourceMode === 'youtube' || audio.audioState.pitchSemitones <= -6}
+                      onClick={() => handlePitchStep(-1)}
+                    >
+                      −
+                    </button>
+                    <span className="key-value">
+                      {audio.audioState.pitchSemitones === 0
+                        ? '原調'
+                        : `${audio.audioState.pitchSemitones > 0 ? '+' : ''}${audio.audioState.pitchSemitones}`}
+                    </span>
+                    <button
+                      className="btn btn-sm btn-icon key-btn"
+                      type="button"
+                      disabled={seekLocked || sourceMode === 'youtube' || audio.audioState.pitchSemitones >= 6}
+                      onClick={() => handlePitchStep(1)}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
 
                 <div className="media-player-right">
@@ -857,7 +950,7 @@ function App() {
                 onSelectTake={timeline.setSelectedTakeId}
                 onDeleteTake={audio.deleteTake}
                 onPlayTake={audio.playTake}
-                onReRecordTake={audio.reRecordTake}
+                onReRecordTake={handleReRecordTake}
               />
             </div>
           </div>
@@ -940,7 +1033,7 @@ function App() {
           }}
           onAlignLyricHere={(time) => lyrics.setAnchor(time)}
           onPlayTake={audio.playTake}
-          onReRecordTake={audio.reRecordTake}
+          onReRecordTake={handleReRecordTake}
           onDeleteTake={audio.deleteTake}
           onZoomIn={timeline.zoomIn}
           onZoomOut={timeline.zoomOut}
@@ -971,6 +1064,9 @@ function App() {
           sourceMode={sourceMode}
           hasBacking={sourceMode === 'youtube' ? Boolean(youtube.currentVideoId) : Boolean(audio.currentBackingBlob)}
           inputLevel={audio.inputLevel}
+          playbackRate={audio.audioState.playbackRate}
+          pitchSemitones={audio.audioState.pitchSemitones}
+          pitchLocked={sourceMode === 'youtube'}
           onTogglePlay={handleToggleBackingPlay}
           onSeek={handleSeek}
           isSingingMode={isSingingMode}
@@ -979,6 +1075,8 @@ function App() {
           onPauseRecording={handlePauseRecording}
           onResumeRecording={handleResumeRecording}
           onFinishRecording={handleFinishRecording}
+          onCycleRate={handleCycleRate}
+          onPitchStep={handlePitchStep}
         />
       </main>
 
