@@ -34,7 +34,6 @@ interface ReviewModalProps {
   onExportMp3: () => Promise<void>;
   onExportVideo: () => Promise<void>;
   videoExporting?: boolean;
-  /** MP4 即時渲染進度 0 ~ 1 */
   videoProgress?: number;
 }
 
@@ -81,8 +80,8 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   const formatDuration = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
-    const ms = Math.floor((sec % 1) * 10);
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+    const ms = Math.floor((sec % 1) * 100);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
   };
 
   const handleExport = async () => {
@@ -122,7 +121,8 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.82)',
+        backgroundColor: 'rgba(5, 6, 8, 0.88)',
+        backdropFilter: 'blur(16px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -133,110 +133,192 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
       <div
         className="modal-card"
         style={{
-          backgroundColor: 'var(--surface)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
+          backgroundColor: '#0d0f14',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '16px',
           width: '100%',
-          maxWidth: '1100px',
+          maxWidth: '1080px',
           maxHeight: '92vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 24px 48px rgba(0,0,0,0.7)',
+          boxShadow: '0 32px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.04)',
           overflow: 'hidden',
         }}
       >
+        {/* Header */}
         <div
-          className="modal-header"
           style={{
             padding: '16px 24px',
-            borderBottom: '1px solid var(--border)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            backgroundColor: 'var(--surface-subtle)',
+            backgroundColor: '#12151c',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '20px' }}>🎛️</span>
-            <span style={{ fontWeight: 700, fontSize: '17px', color: 'var(--text-primary)' }}>
-              獨立後製混音專屬視窗 (Dual-Track Mixing Console)
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+            </div>
+            <span style={{ fontWeight: 600, fontSize: '15px', letterSpacing: '0.02em', color: '#f4f5f8' }}>
+              MASTERING & MIX CONSOLE
             </span>
-            <span className="badge-tag" style={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#3b82f6' }}>
-              60 FPS 雙軌同步
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              letterSpacing: '0.04em',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(16, 185, 129, 0.12)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              fontWeight: 600,
+            }}>
+              HARDWARE SYNC
             </span>
           </div>
-          <button className="btn btn-sm" type="button" onClick={onClose} style={{ padding: '6px 14px' }}>
-            ✕ 關閉視窗
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
           </button>
         </div>
 
-        <div className="modal-body" style={{ padding: '20px 24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              {sourceMode === 'youtube' ? '人聲時間軸（YouTube 伴奏線上同步）' : '雙軌同步時間軸可視化'}
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomOut}>-</button>
-              <span className="zoom-badge">{reviewTimeline.timelineState.zoomLevel.toFixed(1)}x</span>
-              <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomIn}>+</button>
-              <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomReset}>1:1</button>
+        {/* Body */}
+        <div style={{ padding: '24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Timeline Section */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                {sourceMode === 'youtube' ? 'Vocal Track (YouTube Streaming)' : 'Dual-Track Waveform Preview'}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomOut} style={{ padding: '2px 8px', fontSize: '11px' }}>-</button>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-secondary)', padding: '0 4px' }}>
+                  {reviewTimeline.timelineState.zoomLevel.toFixed(1)}x
+                </span>
+                <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomIn} style={{ padding: '2px 8px', fontSize: '11px' }}>+</button>
+                <button className="btn btn-sm" type="button" onClick={reviewTimeline.zoomReset} style={{ padding: '2px 8px', fontSize: '11px' }}>1:1</button>
+              </div>
+            </div>
+
+            <div style={{ height: '170px', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.08)', backgroundColor: '#07080a' }}>
+              <TimelineCanvas
+                duration={duration}
+                currentTime={currentTime}
+                viewStartTime={reviewTimeline.timelineState.viewStartTime}
+                zoomLevel={reviewTimeline.timelineState.zoomLevel}
+                backingPeaks={backingPeaks}
+                vocalTakes={vocalTakes}
+                onSeek={onSeekPreview}
+                onZoom={reviewTimeline.zoom}
+                onPan={reviewTimeline.pan}
+              />
             </div>
           </div>
 
-          <div style={{ height: '180px', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border)' }}>
-            <TimelineCanvas
-              duration={duration}
-              currentTime={currentTime}
-              viewStartTime={reviewTimeline.timelineState.viewStartTime}
-              zoomLevel={reviewTimeline.timelineState.zoomLevel}
-              backingPeaks={backingPeaks}
-              vocalTakes={vocalTakes}
-              onSeek={onSeekPreview}
-              onZoom={reviewTimeline.zoom}
-              onPan={reviewTimeline.pan}
-            />
-          </div>
-
+          {/* Transport Bar */}
           <div
-            className="review-transport"
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '14px',
-              padding: '12px 16px',
-              backgroundColor: 'var(--surface-subtle)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-subtle)',
+              gap: '16px',
+              padding: '12px 18px',
+              backgroundColor: '#12151c',
+              borderRadius: '10px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
             }}
           >
             <button
-              className={`btn ${isPlaying ? 'btn-warning' : 'btn-primary'}`}
               type="button"
               onClick={onTogglePlayPreview}
-              style={{ minWidth: '130px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                backgroundColor: isPlaying ? 'rgba(245, 158, 11, 0.15)' : '#2563eb',
+                color: isPlaying ? '#f59e0b' : '#ffffff',
+                border: isPlaying ? '1px solid rgba(245, 158, 11, 0.4)' : 'none',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
             >
               {isPlaying ? (
                 <>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+                    <rect x="14" y="4" width="4" height="16" rx="1"></rect>
                   </svg>
-                  <span>暫停播放</span>
+                  <span>PAUSE</span>
                 </>
               ) : (
                 <>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
                   </svg>
-                  <span>{sourceMode === 'youtube' ? '播放人聲＋線上伴奏' : '播放雙軌混音'}</span>
+                  <span>PLAY PREVIEW</span>
                 </>
               )}
             </button>
 
-            <button className="btn btn-sm" type="button" onClick={onResetPreview} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <button
+              className="btn btn-sm"
+              type="button"
+              onClick={onResetPreview}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: 'var(--text-secondary)',
+                padding: '7px 12px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
               </svg>
-              <span>重置起點</span>
+              <span>RESET</span>
             </button>
 
             <input
@@ -246,49 +328,61 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               step="0.05"
               value={currentTime}
               onChange={(e) => onSeekPreview(Number(e.target.value))}
-              style={{ flex: 1, accentColor: 'var(--accent)' }}
+              style={{ flex: 1, accentColor: '#3b82f6', cursor: 'pointer' }}
             />
 
-            <span style={{ fontSize: '13.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', minWidth: '135px', textAlign: 'right' }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '13px',
+              color: '#f4f5f8',
+              letterSpacing: '0.04em',
+              minWidth: '150px',
+              textAlign: 'right',
+            }}>
               {formatDuration(currentTime)} / {formatDuration(duration)}
             </span>
           </div>
 
-          {sourceMode === 'youtube' && (
-            <p className="review-source-note" role="note">
-              YouTube 伴奏會在播放器中同步試聽；匯出的 WAV / MP3 / MP4 只包含錄製人聲。
-            </p>
-          )}
-
-          <div className="review-track-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+          {/* Mixing Channels Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '16px' }}>
+            {/* Backing Channel */}
             <div
               style={{
-                padding: '14px 16px',
-                backgroundColor: 'var(--surface-subtle)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
+                padding: '16px',
+                backgroundColor: '#12151c',
+                borderRadius: '10px',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px',
+                gap: '12px',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <span style={{ fontWeight: 600, fontSize: '13.5px', color: '#f4f5f8', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
                   </svg>
-                  {sourceMode === 'youtube' ? 'YouTube 伴奏（線上）' : '伴奏軌 (Backing)'}
+                  BACKING TRACK
                 </span>
                 <button
-                  className={`btn btn-sm ${backingMuted ? 'btn-danger' : 'btn-outline'}`}
                   type="button"
                   onClick={onToggleBackingMute}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    backgroundColor: backingMuted ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                    color: backingMuted ? '#ef4444' : 'var(--text-muted)',
+                    border: `1px solid ${backingMuted ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.1)'}`,
+                  }}
                 >
-                  {backingMuted ? '已靜音' : '靜音'}
+                  {backingMuted ? 'MUTED' : 'MUTE'}
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>音量:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>VOL</span>
                 <input
                   type="range"
                   min="0"
@@ -296,42 +390,54 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                   step="0.01"
                   value={backingVolume}
                   onChange={(e) => onBackingVolumeChange(Number(e.target.value))}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, accentColor: '#3b82f6' }}
                 />
-                <span className="vol-badge">{Math.round(Math.min(backingVolume, backingVolumeMax) * 100)}%</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', minWidth: '40px', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                  {Math.round(Math.min(backingVolume, backingVolumeMax) * 100)}%
+                </span>
               </div>
             </div>
 
+            {/* Vocal Channel */}
             <div
               style={{
-                padding: '14px 16px',
-                backgroundColor: 'var(--surface-subtle)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
+                padding: '16px',
+                backgroundColor: '#12151c',
+                borderRadius: '10px',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px',
+                gap: '12px',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <span style={{ fontWeight: 600, fontSize: '13.5px', color: '#f4f5f8', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                     <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                     <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
                   </svg>
-                  人聲軌 (Vocals)
+                  VOCAL TRACK
                 </span>
                 <button
-                  className={`btn btn-sm ${vocalMuted ? 'btn-danger' : 'btn-outline'}`}
                   type="button"
                   onClick={onToggleVocalMute}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    backgroundColor: vocalMuted ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                    color: vocalMuted ? '#ef4444' : 'var(--text-muted)',
+                    border: `1px solid ${vocalMuted ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.1)'}`,
+                  }}
                 >
-                  {vocalMuted ? '已靜音' : '靜音'}
+                  {vocalMuted ? 'MUTED' : 'MUTE'}
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>音量:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>VOL</span>
                 <input
                   type="range"
                   min="0"
@@ -339,51 +445,65 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                   step="0.01"
                   value={vocalVolume}
                   onChange={(e) => onVocalVolumeChange(Number(e.target.value))}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, accentColor: '#3b82f6' }}
                 />
-                <span className="vol-badge">{Math.round(vocalVolume * 100)}%</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', minWidth: '40px', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                  {Math.round(vocalVolume * 100)}%
+                </span>
               </div>
             </div>
 
+            {/* FX & Latency Offset */}
             <div
               style={{
-                padding: '14px 16px',
-                backgroundColor: 'var(--surface-subtle)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
+                padding: '16px',
+                backgroundColor: '#12151c',
+                borderRadius: '10px',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '10px',
+                gap: '12px',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <span style={{ fontWeight: 600, fontSize: '13.5px', color: '#f4f5f8', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3" />
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                   </svg>
-                  後製效果 (DSP)
+                  DSP & ALIGNMENT
                 </span>
                 <button
-                  className={`btn btn-sm ${reverbEnabled ? 'btn-primary' : 'btn-outline'}`}
                   type="button"
                   onClick={onToggleReverb}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    backgroundColor: reverbEnabled ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                    color: reverbEnabled ? '#3b82f6' : 'var(--text-muted)',
+                    border: `1px solid ${reverbEnabled ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255,255,255,0.1)'}`,
+                  }}
                 >
-                  KTV 空間殘響: {reverbEnabled ? '開' : '關'}
+                  REVERB: {reverbEnabled ? 'ON' : 'OFF'}
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>人聲延遲:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>SYNC</span>
                 <input
                   type="range"
                   min="-250"
                   max="250"
-                  step="5"
+                  step="1"
                   value={latencyOffsetMs}
                   onChange={(e) => onLatencyOffsetChange(Number(e.target.value))}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, accentColor: '#3b82f6' }}
                 />
-                <span className="vol-badge">{latencyOffsetMs > 0 ? '+' : ''}{latencyOffsetMs}ms</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', minWidth: '55px', textAlign: 'right', color: '#10b981' }}>
+                  {latencyOffsetMs > 0 ? '+' : ''}{latencyOffsetMs}ms
+                </span>
               </div>
             </div>
           </div>
@@ -391,119 +511,150 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
           {showSaveDialog && (
             <div
               style={{
-                padding: '14px 16px',
-                backgroundColor: 'var(--surface-highlight)',
-                borderRadius: 'var(--radius-md)',
+                padding: '14px 18px',
+                backgroundColor: '#161922',
+                borderRadius: '10px',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
+                gap: '12px',
               }}
             >
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#ffffff' }}>作品名稱:</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#f4f5f8' }}>專案名稱:</span>
               <input
                 type="text"
                 className="input-text"
                 value={saveTitle}
                 onChange={(e) => setSaveTitle(e.target.value)}
-                style={{ flex: 1 }}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#0d0f14',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  color: '#ffffff',
+                }}
               />
-              <button className="btn btn-primary" type="button" onClick={handleSaveConfirm}>
+              <button className="btn btn-primary" type="button" onClick={handleSaveConfirm} style={{ padding: '8px 16px', borderRadius: '6px' }}>
                 確認保存
               </button>
-              <button className="btn" type="button" onClick={() => setShowSaveDialog(false)}>
+              <button className="btn" type="button" onClick={() => setShowSaveDialog(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>
                 取消
               </button>
             </div>
           )}
         </div>
 
+        {/* Footer Actions */}
         <div
-          className="modal-footer"
           style={{
             padding: '16px 24px',
-            borderTop: '1px solid var(--border)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.07)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
             flexWrap: 'wrap',
             gap: '12px',
-            backgroundColor: 'var(--surface-subtle)',
+            backgroundColor: '#12151c',
           }}
         >
           {videoExporting && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginRight: 'auto' }}>
-              <span style={{ fontSize: '13.5px', color: 'var(--text-secondary)' }}>
-                影片即時渲染中 {Math.round(videoProgress * 100)}%（請保持視窗開啟）
+              <span style={{ fontSize: '12.5px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                RENDERING MP4: {Math.round(videoProgress * 100)}%
               </span>
-              <div style={{ width: '160px', height: '6px', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-                <div style={{ width: `${Math.round(videoProgress * 100)}%`, height: '100%', backgroundColor: 'var(--accent)', transition: 'width 0.2s linear' }} />
+              <div style={{ width: '140px', height: '4px', borderRadius: '2px', backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.round(videoProgress * 100)}%`, height: '100%', backgroundColor: '#3b82f6', transition: 'width 0.2s linear' }} />
               </div>
             </div>
           )}
+
           <button
             className="btn btn-outline"
             type="button"
             onClick={() => setShowSaveDialog(true)}
             disabled={anyExporting}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '6px', fontSize: '12px' }}
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <polyline points="17 21 17 13 7 13 7 21" />
               <polyline points="7 3 7 8 15 8" />
             </svg>
-            <span>保存至本機作品庫</span>
+            <span>保存專案</span>
           </button>
+
           <button
             className="btn btn-outline"
             type="button"
             onClick={handleExportMp3Click}
             disabled={anyExporting}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '6px', fontSize: '12px' }}
           >
             {isExporting ? (
-              <span>MP3 編碼中...</span>
+              <span>編碼中...</span>
             ) : (
               <>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
                 </svg>
                 <span>匯出 MP3</span>
               </>
             )}
           </button>
+
           <button
-            className="btn btn-success"
+            className="btn"
             type="button"
             onClick={handleExport}
             disabled={anyExporting}
-            style={{ minWidth: '170px', display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+            }}
           >
             {isExporting ? (
-              <span>無損渲染中...</span>
+              <span>渲染中...</span>
             ) : (
               <>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                <span>匯出 16-bit WAV</span>
+                <span>匯出 WAV</span>
               </>
             )}
           </button>
+
           <button
             className="btn btn-primary"
             type="button"
             onClick={handleExportVideoClick}
             disabled={anyExporting}
-            style={{ minWidth: '170px', display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 18px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              backgroundColor: '#3b82f6',
+              fontWeight: 600,
+            }}
           >
             {videoExporting ? (
-              <span>影片渲染中 {Math.round(videoProgress * 100)}%...</span>
+              <span>渲染中 {Math.round(videoProgress * 100)}%...</span>
             ) : (
               <>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="23 7 16 12 23 17 23 7" />
                   <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
                 </svg>
