@@ -67,6 +67,9 @@ export function useAudioEngine() {
   const previewRafRef = useRef<number | null>(null);
   const previewStartStampRef = useRef<number>(0);
   const previewStartOffsetRef = useRef<number>(0);
+  const previewSourcesRef = useRef<{ source: AudioBufferSourceNode; gainNode: GainNode }[]>([]);
+  const previewAudioCtxRef = useRef<AudioContext | null>(null);
+  const decodedTakeBuffersRef = useRef<Map<number, AudioBuffer>>(new Map());
 
   // 變速 / 升降 KEY：伴奏元素經 Web Audio 圖路由，pitch=0 時直通（bypass）
   const elementSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -457,10 +460,23 @@ export function useAudioEngine() {
         return;
       }
 
+      let exactDuration = Math.max(0.2, recordingActiveDurationRef.current);
+      try {
+        const audioCtx = await ensureAudioContext();
+        const arrayBuf = await blob.arrayBuffer();
+        const decodedBuffer = await audioCtx.decodeAudioData(arrayBuf.slice(0));
+        decodedTakeBuffersRef.current.set(takeId, decodedBuffer);
+        if (decodedBuffer.duration > 0.05) {
+          exactDuration = decodedBuffer.duration;
+        }
+      } catch (err) {
+        console.warn('音訊解碼失敗，採用時間計數:', err);
+      }
+
       const newTake: VocalTake = {
         id: takeId,
         startTime: currentTakeStartTimeRef.current,
-        duration: Math.max(0.2, recordingActiveDurationRef.current),
+        duration: exactDuration,
         url: URL.createObjectURL(blob),
         blob,
       };
@@ -671,6 +687,16 @@ export function useAudioEngine() {
       cancelAnimationFrame(previewRafRef.current);
       previewRafRef.current = null;
     }
+    // 停止所有 Web Audio Buffer Sources
+    previewSourcesRef.current.forEach(({ source, gainNode }) => {
+      try {
+        source.stop();
+        source.disconnect();
+        gainNode.disconnect();
+      } catch (e) {}
+    });
+    previewSourcesRef.current = [];
+
     if (previewBackingRef.current) {
       previewBackingRef.current.pause();
       previewBackingRef.current.src = '';
@@ -684,25 +710,110 @@ export function useAudioEngine() {
     setAudioState(prev => ({ ...prev, isPlayingMix: false }));
   }, []);
 
-  const playMixedPreview = useCallback((startAt = 0, includeBackingTrack = true) => {
+  const playMixedPreview = useCallback(async (startAt = 0, includeBackingTrack = true) => {
     stopMixedPreview();
-
-    if (includeBackingTrack && currentBackingBlob) {
-      const bUrl = URL.createObjectURL(currentBackingBlob);
-      previewBackingUrlRef.current = bUrl;
-      const bAudio = new Audio(bUrl);
-      bAudio.volume = audioState.backingMuted ? 0 : audioState.backingVolume;
-      bAudio.currentTime = startAt;
-      bAudio.play().catch(e => console.warn(e));
-      previewBackingRef.current = bAudio;
+    const ctx = await ensureAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
     }
 
-    previewAudiosRef.current = vocalTakes.map(take => {
-      const a = new Audio(take.url);
-      a.volume = audioState.vocalMuted ? 0 : audioState.vocalVolume;
-      return { id: take.id, audio: a, startTime: take.startTime, duration: take.duration };
-    });
+    const scheduledSources: { source: AudioBufferSourceNode; gainNode: GainNode }[] = [];
+    const baseAudioTime = ctx.currentTime + 0.05; // 50ms 預先排程裕度，完全杜絕啟動抖動
+    const latencySec = (audioState.latencyOffsetMs || 0) / 1000;
 
+    // 播放伴奏
+    if (includeBackingTrack && currentBackingBlob) {
+      try {
+        let backingBuf: AudioBuffer | null = null;
+        const bArray = await currentBackingBlob.arrayBuffer();
+        backingBuf = await ctx.decodeAudioData(bArray.slice(0));
+
+        if (backingBuf) {
+          const bSource = ctx.createBufferSource();
+          const bGain = ctx.createGain();
+          bSource.buffer = backingBuf;
+          bGain.gain.value = audioState.backingMuted ? 0 : audioState.backingVolume;
+          bSource.connect(bGain);
+          bGain.connect(ctx.destination);
+
+          if (startAt < backingBuf.duration) {
+            bSource.start(baseAudioTime, startAt);
+            scheduledSources.push({ source: bSource, gainNode: bGain });
+          }
+        }
+      } catch (err) {
+        // 退回 HTMLAudioElement 播放
+        const bUrl = URL.createObjectURL(currentBackingBlob);
+        previewBackingUrlRef.current = bUrl;
+        const bAudio = new Audio(bUrl);
+        bAudio.volume = audioState.backingMuted ? 0 : audioState.backingVolume;
+        bAudio.currentTime = startAt;
+        bAudio.play().catch(e => console.warn(e));
+        previewBackingRef.current = bAudio;
+      }
+    }
+
+    // 播放人聲 Take (使用 Web Audio Buffer 硬體時鐘排程)
+    for (const take of vocalTakes) {
+      if (!take.blob) continue;
+      try {
+        let vBuffer = decodedTakeBuffersRef.current.get(take.id);
+        if (!vBuffer) {
+          const vArray = await take.blob.arrayBuffer();
+          vBuffer = await ctx.decodeAudioData(vArray.slice(0));
+          decodedTakeBuffersRef.current.set(take.id, vBuffer);
+        }
+
+        const alignedStart = take.startTime + latencySec;
+        const takeEnd = alignedStart + vBuffer.duration;
+
+        // 若當前播放時間已超過此 Take，略過
+        if (startAt >= takeEnd) continue;
+
+        const vSource = ctx.createBufferSource();
+        const vGain = ctx.createGain();
+        vSource.buffer = vBuffer;
+        vGain.gain.value = audioState.vocalMuted ? 0 : audioState.vocalVolume;
+
+        // 殘響 (Reverb) 效果節點
+        if (audioState.reverbEnabled) {
+          const convolver = ctx.createConvolver();
+          const impulse = ctx.createBuffer(2, ctx.sampleRate * 1.5, ctx.sampleRate);
+          const left = impulse.getChannelData(0);
+          const right = impulse.getChannelData(1);
+          for (let i = 0; i < impulse.length; i++) {
+            const decay = Math.pow(1 - i / impulse.length, 2.2);
+            left[i] = (Math.random() * 2 - 1) * decay;
+            right[i] = (Math.random() * 2 - 1) * decay;
+          }
+          convolver.buffer = impulse;
+          const wetGain = ctx.createGain();
+          wetGain.gain.value = 0.22;
+          vSource.connect(convolver);
+          convolver.connect(wetGain);
+          wetGain.connect(ctx.destination);
+        }
+
+        vSource.connect(vGain);
+        vGain.connect(ctx.destination);
+
+        if (startAt <= alignedStart) {
+          // 在未來時間點準確起播
+          const delayUntilStart = alignedStart - startAt;
+          vSource.start(baseAudioTime + delayUntilStart, 0);
+        } else {
+          // 從中途 offset 播放
+          const offsetIntoBuffer = startAt - alignedStart;
+          vSource.start(baseAudioTime, offsetIntoBuffer);
+        }
+
+        scheduledSources.push({ source: vSource, gainNode: vGain });
+      } catch (e) {
+        console.warn(`Take ${take.id} Web Audio 排程失敗:`, e);
+      }
+    }
+
+    previewSourcesRef.current = scheduledSources;
     previewStartStampRef.current = performance.now();
     previewStartOffsetRef.current = startAt;
     setAudioState(prev => ({ ...prev, isPlayingMix: true }));
@@ -724,27 +835,11 @@ export function useAudioEngine() {
       }
 
       setMixCurrentTime(cur);
-
-      const latencySec = (audioState.latencyOffsetMs || 0) / 1000;
-      previewAudiosRef.current.forEach(item => {
-        const alignedStart = item.startTime + latencySec;
-        if (cur >= alignedStart && cur <= alignedStart + item.duration) {
-          if (item.audio.paused) {
-            item.audio.currentTime = cur - alignedStart;
-            item.audio.play().catch(e => console.warn(e));
-          }
-        } else {
-          if (!item.audio.paused) {
-            item.audio.pause();
-          }
-        }
-      });
-
       previewRafRef.current = requestAnimationFrame(updatePreview);
     };
 
     previewRafRef.current = requestAnimationFrame(updatePreview);
-  }, [stopMixedPreview, currentBackingBlob, audioState.backingMuted, audioState.backingVolume, audioState.vocalMuted, audioState.vocalVolume, audioState.backingDuration, audioState.latencyOffsetMs, vocalTakes]);
+  }, [stopMixedPreview, ensureAudioContext, currentBackingBlob, audioState.backingMuted, audioState.backingVolume, audioState.vocalMuted, audioState.vocalVolume, audioState.backingDuration, audioState.latencyOffsetMs, audioState.reverbEnabled, vocalTakes]);
 
   const seekMixedPreview = useCallback((time: number, includeBackingTrack = true) => {
     const isPlaying = audioState.isPlayingMix;
