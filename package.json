@@ -1,7 +1,7 @@
 {
   "name": "singstudio",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "SingStudio DAW PRO - 專業雙軌音訊工作站 (React + Electron + Capacitor)",
   "repository": {
     "type": "git",

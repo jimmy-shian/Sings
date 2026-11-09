@@ -81,7 +81,7 @@ function App() {
   const storage = useStorage();
   const speech = useSpeechTranscription();
 
-  const [version, setVersion] = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.1');
+  const [version, setVersion] = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.0');
   const [sourceMode, setSourceMode] = useState<SourceMode>('local');
   const [leftTab, setLeftTab] = useState<LeftTab>('source');
   const [localFileName, setLocalFileName] = useState('');

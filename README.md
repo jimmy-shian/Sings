@@ -1,4 +1,4 @@
-# SingStudio DAW PRO - 專業雙軌音訊工作站與卡拉OK錄音系統 (v1.0.1)
+# SingStudio DAW PRO - 專業雙軌音訊工作站與卡拉OK錄音系統 (v1.1.0)
 
 SingStudio 是一套以 **Local-First（本機優先）** 與 **OpenDesign 極簡開發者美學** 為核心的專業雙軌音訊工作站（Digital Audio Workstation, DAW）。本專案已全面扁平化重構為 **React 19 + TypeScript + Electron 44 (桌面端) + Capacitor 8 (Android 手機端)** 現代化架構，所有程式碼均位於根目錄統籌管理，徹底移除舊版 Python HTTP 伺服器與 Legacy Vanilla 檔案，支援桌面原生視窗與行動裝置一鍵編譯發佈及 GitHub Actions 雲端自動化建置。
 
@@ -47,7 +47,7 @@ SingStudio 是一套以 **Local-First（本機優先）** 與 **OpenDesign 極�
 
 ```text
 ======================================================================
-   SingStudio DAW PRO - 一鍵啟動與建置選單 (v1.0.1)
+   SingStudio DAW PRO - 一鍵啟動與建置選單 (v1.1.0)
 ======================================================================
 
    [1] 本機啟動開發 (Electron + React 熱重載)  <- 預設
@@ -88,7 +88,7 @@ npm run build:web
 
 執行編譯後，所有產物自動統整輸出至根目錄 `dist/`：
 - **`dist/SingStudio-Windows-x64.exe`**：**免安裝單一獨立執行檔**（免安裝直接執行，啟動原生 Electron 視窗，零依賴）。
-- **`dist/SingStudio-Setup-1.0.1.exe`**：**標準 NSIS 安裝程式**（自動建立桌面捷徑與開始功能表）。
+- **`dist/SingStudio-Setup-1.1.0.exe`**：**標準 NSIS 安裝程式**（自動建立桌面捷徑與開始功能表）。
 - **`dist/SingStudio-Android.apk`**：**正式簽名之 Android APK**（已配置 `singstudio.keystore` 雙重簽名與錄音權限，可直接安裝至實體手機）。
 
 ---
