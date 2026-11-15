@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 title SingStudio - 一鍵啟動與建置選單
 
-set "PYTHON_EXE=C:\Users\Administrator\venv\Scripts\python.exe"
+set "PYTHON_EXE=%USERPROFILE%\venv\Scripts\python.exe"
 if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python"
 
 :MENU
