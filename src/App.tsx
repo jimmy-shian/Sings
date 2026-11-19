@@ -1,4 +1,5 @@
 import { SplashAd } from './components/SplashAd';
+import { StudioAnnouncementOverlay } from './components/StudioAnnouncementOverlay';
 import { PreRecordingAd } from './components/PreRecordingAd';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
@@ -1144,6 +1145,7 @@ function App() {
 
       {/* yesolve studio 開場廣告覆蓋層（聲學青雙軌工作站主題） */}
       {showSplashAd && <SplashAd onFinish={() => setShowSplashAd(false)} appName="SingStudio DAW" />}
+      <StudioAnnouncementOverlay appId="sings" blocked={showSplashAd} />
 
       {/* 開唱前預備贊助廣告（倒數結束後自動開始錄音） */}
       <PreRecordingAd visible={showPreRecAd} onFinish={startActualRecording} />
